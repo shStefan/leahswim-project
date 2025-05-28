@@ -1,52 +1,243 @@
-import { useState } from 'react';
-import { Heart, ShoppingBag, Menu, X, ChevronDown, Filter as FilterIcon } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Heart, ShoppingBag, Menu, X, ChevronDown, Filter as FilterIcon, MessageSquare, Send } from 'lucide-react';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useLikes } from '../context/LikesContext';
 import { useCart } from '../context/CartContext';
 
-const WC_CONSUMER_KEY = 'ck_d170e090d396f69f0d671275b8fa2af3b6239829';
-const WC_CONSUMER_SECRET = 'cs_272080de1a154339f0799d1845f64c144e090640';
-const WC_API_URL = 'https://leahcation.ru/wp-json/wc/v3';
+// Define types for navigation items
+interface NavSubItem {
+  title: string;
+  path: string;
+}
+
+interface NavItem {
+  title: string;
+  path?: string; // Path for main category if it's clickable directly
+  subItems?: NavSubItem[];
+  megaMenuColumns?: NavSubItem[][]; // For more complex dropdowns like Детская одежда
+}
+
+// Updated NavItems with exact percent-encoded paths
+const newNavItems: NavItem[] = [
+  {
+    title: 'Купальники',
+    path: '/category/%25d0%25ba%25d1%2583%25d0%25bf%25d0%25b0%25d0%25bb%25d1%258c%25d0%25bd%25d0%25b8%25d0%25ba%25d0%25b8-2',
+  },
+  {
+    title: 'Одежда',
+    path: '/category/%25d0%25be%25d0%25b4%25d0%25b5%25d0%25b6%25d0%25b4%25d0%25b0-2',
+  },
+  {
+    title: 'Спорт',
+    path: '/category/%25d1%2581%25d0%25bf%25d0%25be%25d1%2580%25d1%2582',
+  },
+  {
+    title: 'Plus size',
+    path: '/category/plus-size1',
+  },
+  {
+    title: 'Аксессуары',
+    path: '/category/%25d0%25b0%25d0%25ba%25d1%2581%25d0%25b5%25d1%2581%25d1%2581%25d1%2583%25d0%25b0%25d1%2580%25d1%258b',
+  },
+  {
+    title: 'Базовая коллекция',
+    path: '/category/%25d0%25b1%25d0%25b0%25d0%25b7%25d0%25be%25d0%25b2%25d0%25b0%25d1%258f-%25d0%25ba%25d0%25be%25d0%25bb%25d0%25bb%25d0%25b5%25d0%25ba%25d1%2586%25d0%25b8%25d1%258f',
+  },
+  {
+    title: 'Детская одежда',
+    path: '/category/%25d0%25b4%25d0%25b5%25d1%2582%25d1%2581%25d0%25ba%25d0%25b0%25d1%258f-%25d0%25be%25d0%25b4%25d0%25b5%25d0%25b6%25d0%25b4%25d0%25b0',
+  },
+];
 
 const Header = () => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isLikesMenuOpen, setIsLikesMenuOpen] = useState(false);
-  const [isCartMenuOpen, setIsCartMenuOpen] = useState(false);
   const { likedProducts, likedProductsCache, toggleLike } = useLikes();
-  const { cart } = useCart();
-  const cartCount = cart?.items?.reduce((sum: number, item: any) => sum + item.quantity, 0) || 0;
+  const { cart, removeFromCart, isCartDrawerOpen, setIsCartDrawerOpen } = useCart();
   const navigate = useNavigate();
+  const [isScrolled, setIsScrolled] = useState(false);
+  const [openDropdown, setOpenDropdown] = useState<string | null>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null); // For click outside
+  const [openMobileSubmenu, setOpenMobileSubmenu] = useState<string | null>(null); // For mobile accordion
+
+  const location = useLocation(); // Get location
+  const isHomePage = location.pathname === '/'; // Check if it's the homepage
+
+  // Log cart state whenever Header re-renders
+  console.log('[Header Render] Cart items count:', cart?.items?.length, 'Cart Total:', cart?.total);
+
+  const cartCount = cart?.items?.reduce((sum: number, item: any) => sum + item.quantity, 0) || 0;
+
+  useEffect(() => {
+    const handleScroll = () => {
+      setIsScrolled(window.scrollY > 10);
+    };
+    // Only attach scroll listener if not on homepage, as homepage header is always transparent
+    if (!isHomePage) {
+      window.addEventListener('scroll', handleScroll);
+    } else {
+      // Ensure isScrolled is false if we navigate to homepage and it was true
+      setIsScrolled(false);
+    }
+    return () => {
+      if (!isHomePage) { // Clean up listener only if it was added
+        window.removeEventListener('scroll', handleScroll);
+      }
+    };
+  }, [isHomePage]); // Re-run effect if isHomePage changes
+
+  // Close dropdown on click outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target as Node)) {
+        setOpenDropdown(null);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [dropdownRef]);
+
+  // Base classes
+  const headerBaseClasses = "fixed top-0 left-0 right-0 z-30 transition-all duration-300 ease-in-out";
+  // Conditional classes
+  const headerDynamicClasses = isHomePage 
+    ? "bg-transparent border-transparent" // Homepage: always transparent, no border
+    : `${isScrolled ? 'shadow-md bg-white' : 'bg-white'} border-b border-gray-200`; // Other pages: normal behavior
+
+  const textColorClass = isHomePage ? 'text-white' : 'text-black';
+  const hoverTextColorClass = isHomePage ? 'hover:text-gray-200' : 'hover:text-gray-700';
+  const dropdownTextColorClass = isHomePage ? 'text-gray-300' : 'text-gray-700'; // For dropdown open state
+  const iconColorClass = isHomePage ? 'text-white' : 'text-black';
+  // For dropdown menus, they usually have their own background, so text inside them might remain dark or need specific styling.
+  // The cart/likes count badges will have black background and white text, which is fine for both header styles.
+  // The logo image will not change color based on these classes.
+
+  const logoSrc = isHomePage 
+    ? "https://zdqksnii.elementor.cloud/wp-content/uploads/2025/05/white-1.png" 
+    : "https://zdqksnii.elementor.cloud/wp-content/uploads/2025/05/black-1.png";
+
+  const handleCheckout = () => {
+    console.log('[handleCheckout triggered] Cart from current render scope:', JSON.parse(JSON.stringify(cart))); // Log a deep copy
+    console.log('[handleCheckout] cart.items.length:', cart?.items?.length);
+
+    if (cart && cart.items && cart.items.length > 0) {
+      console.log('[handleCheckout] Condition met: Cart has items. Attempting to close drawer and navigate.');
+      setIsCartDrawerOpen(false);
+      console.log('[handleCheckout] Drawer supposedly set to closed. Navigating next...');
+      // Temporarily add a timeout to see if it's a timing issue with drawer closing vs navigating
+      setTimeout(() => {
+        console.log('[handleCheckout] Navigating to /checkout after timeout...');
+        navigate('/checkout');
+      }, 100); // 100ms delay
+    } else {
+      console.log('[handleCheckout] Condition NOT met: Cart is effectively empty or cart object is problematic.');
+    }
+  };
 
   return (
-    <header className="bg-white border-b border-gray-200 sticky top-0 z-50">
-      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-        <div className="flex justify-between items-center h-16">
+    <header 
+      className={`${headerBaseClasses} ${headerDynamicClasses}`}
+    >
+      <div className="w-full px-4 sm:px-6 lg:px-8 md:px-[45px]">
+        <div className="flex justify-between items-center h-16 relative">
           {/* Mobile menu button */}
           <button
-            className="md:hidden p-2 text-black hover:text-gray-600"
+            className={`md:hidden p-2 ${iconColorClass} ${hoverTextColorClass}`}
             onClick={() => setIsMenuOpen(true)}
             aria-label="Open menu"
           >
             <Menu size={24} />
           </button>
 
-          {/* Logo */}
-          <Link to="/" className="flex-shrink-0">
-            <img src="/logo.png" alt="Logo" className="h-8 w-auto" />
+          {/* Logo - mobile absolute center */}
+          <Link to="/" className="absolute left-1/2 -translate-x-1/2 md:hidden">
+            <img src={logoSrc} alt="Logo" className="h-8 w-auto" />
           </Link>
 
-          {/* Desktop Navigation */}
-          <nav className="hidden md:flex space-x-8">
-            <Link to="/" className="text-black hover:text-gray-600">Home</Link>
-            <Link to="/catalogue" className="text-black hover:text-gray-600">Catalogue</Link>
-            <Link to="/about" className="text-black hover:text-gray-600">About</Link>
-            <Link to="/contact" className="text-black hover:text-gray-600">Contact</Link>
+          {/* Logo - desktop in flex flow */}
+          <Link to="/" className="flex-shrink-0 hidden md:block">
+            <img src={logoSrc} alt="Logo" className="h-8 w-auto" />
+          </Link>
+
+          {/* Desktop Navigation with Dropdowns */}
+          <nav className="hidden md:flex space-x-1 items-center">
+            {newNavItems.map((item) => (
+              <div 
+                key={item.title} 
+                className="relative group"
+                onMouseEnter={() => setOpenDropdown(item.title)}
+                onMouseLeave={() => setOpenDropdown(null)}
+              >
+                <Link 
+                  to={item.path || '#'} 
+                  className={`px-3 py-2 rounded-md text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 flex items-center
+                    ${openDropdown === item.title && (item.subItems || item.megaMenuColumns) ? (isHomePage ? 'text-gray-300 underline' : 'text-gray-700 underline') : textColorClass} ${hoverTextColorClass}
+                  `}
+                  onClick={(e) => { 
+                    if (!item.path && (item.subItems || item.megaMenuColumns)) e.preventDefault(); 
+                    if (item.path) setOpenDropdown(null);
+                  }}
+                >
+                  {item.title}
+                  {(item.subItems || item.megaMenuColumns) && !item.path && <ChevronDown className={`inline w-4 h-4 ml-1 transition-transform duration-200 ${openDropdown === item.title ? 'transform rotate-180' : ''} ${iconColorClass}`} />}
+                </Link>
+                {openDropdown === item.title && (item.subItems || item.megaMenuColumns) && (
+                  <div 
+                    ref={dropdownRef}
+                    className="absolute left-0 mt-2 w-auto min-w-max bg-white border border-gray-200 rounded-md shadow-lg py-1 z-40"
+                  >
+                    {item.subItems && !item.megaMenuColumns && item.subItems.map((subItem) => (
+                      <Link
+                        key={subItem.title}
+                        to={subItem.path}
+                        className="block px-4 py-3 text-sm text-black hover:bg-gray-100 hover:text-gray-800 whitespace-nowrap"
+                        onClick={() => setOpenDropdown(null)}
+                      >
+                        {subItem.title}
+                      </Link>
+                    ))}
+                    {item.megaMenuColumns && (
+                      <div className="flex p-5 min-w-[340px]">
+                        {item.megaMenuColumns.map((column, colIndex) => (
+                          <div key={colIndex} className="flex flex-col space-y-1 w-1/2 px-2">
+                            {column.map((subItem, subIndex) => {
+                              const isTitle = subIndex === 0 && column.length > 1;
+                              if (isTitle) {
+                                return (
+                                  <span 
+                                    key={subItem.title} 
+                                    className="block pt-2 pb-2 text-sm font-semibold text-black select-none mb-1"
+                                  >
+                                    {subItem.title}
+                                  </span>
+                                );
+                              } else {
+                                return (
+                                  <Link
+                                    key={subItem.title}
+                                    to={subItem.path}
+                                    className="block py-2 text-sm text-black hover:bg-gray-100 hover:text-gray-800 rounded-md px-3"
+                                    onClick={() => setOpenDropdown(null)}
+                                  >
+                                    {subItem.title}
+                                  </Link>
+                                );
+                              }
+                            })}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
           </nav>
 
           {/* Right side icons */}
           <div className="flex items-center space-x-4">
             <button
-              className="p-2 text-black hover:text-gray-600 relative"
+              className={`p-2 relative ${iconColorClass} ${hoverTextColorClass}`}
               onClick={() => setIsLikesMenuOpen(true)}
               aria-label="Liked products"
             >
@@ -56,8 +247,8 @@ const Header = () => {
               </span>
             </button>
             <button
-              className="p-2 text-black hover:text-gray-600 relative"
-              onClick={() => setIsCartMenuOpen(true)}
+              className={`p-2 relative ${iconColorClass} ${hoverTextColorClass}`}
+              onClick={() => setIsCartDrawerOpen(true)}
               aria-label="Shopping cart"
             >
               <ShoppingBag size={24} />
@@ -84,17 +275,109 @@ const Header = () => {
         <div className="flex justify-end p-4">
           <button
             className="text-black hover:text-gray-600"
-            onClick={() => setIsMenuOpen(false)}
+            onClick={() => {
+              setIsMenuOpen(false);
+              setOpenMobileSubmenu(null); // Reset mobile submenu on close
+            }}
             aria-label="Close menu"
           >
             <X size={24} />
           </button>
         </div>
-        <nav className="flex flex-col space-y-4 p-4">
-          <Link to="/" className="text-black hover:text-gray-600">Home</Link>
-          <Link to="/catalogue" className="text-black hover:text-gray-600">Catalogue</Link>
-          <Link to="/about" className="text-black hover:text-gray-600">About</Link>
-          <Link to="/contact" className="text-black hover:text-gray-600">Contact</Link>
+        <nav className="flex flex-col h-[calc(100%-64px)] p-4">
+          <div className="flex-grow overflow-y-auto">
+            {newNavItems.map((item) => (
+              <div key={item.title} className="flex flex-col">
+                <button
+                  onClick={() => {
+                    if (item.subItems || item.megaMenuColumns) {
+                      setOpenMobileSubmenu(openMobileSubmenu === item.title ? null : item.title);
+                    } else if (item.path) {
+                      navigate(item.path);
+                      setIsMenuOpen(false);
+                      setOpenMobileSubmenu(null);
+                    }
+                  }}
+                  className="flex items-center justify-between w-full py-2 px-3 text-left text-black hover:bg-gray-100 rounded-md"
+                >
+                  <span>{item.title}</span>
+                  {(item.subItems || item.megaMenuColumns) && (
+                    <ChevronDown 
+                      className={`w-5 h-5 transform transition-transform duration-200 ${openMobileSubmenu === item.title ? 'rotate-180' : ''}`}
+                    />
+                  )}
+                </button>
+                {item.subItems && openMobileSubmenu === item.title && (
+                  <div className="pl-4 mt-1 mb-2 border-l border-gray-200">
+                    {item.subItems.map((subItem) => (
+                      <Link
+                        key={subItem.title}
+                        to={subItem.path}
+                        className="block py-2 px-3 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
+                        onClick={() => {
+                          setIsMenuOpen(false);
+                          setOpenMobileSubmenu(null);
+                        }}
+                      >
+                        {subItem.title}
+                      </Link>
+                    ))}
+                  </div>
+                )}
+                {item.megaMenuColumns && openMobileSubmenu === item.title && (
+                  <div className="pl-4 mt-1 mb-2 border-l border-gray-200">
+                    {item.megaMenuColumns.map((column, colIndex) => (
+                      <div key={`${item.title}-col-${colIndex}`} className="mb-2 last:mb-0">
+                        {column.map((subItem, subIndex) => {
+                          const isTitle = subIndex === 0 && column.length > 1;
+                          if (isTitle) {
+                            return (
+                              <span 
+                                key={`${subItem.title}-title-${subIndex}`}
+                                className="block py-2 px-3 text-sm font-semibold text-black select-none"
+                              >
+                                {subItem.title}
+                              </span>
+                            );
+                          } else {
+                            return (
+                              <Link
+                                key={`${subItem.title}-link-${subIndex}`}
+                                to={subItem.path}
+                                className="block py-2 px-3 ml-2 text-sm text-gray-700 hover:bg-gray-100 rounded-md"
+                                onClick={() => {
+                                  setIsMenuOpen(false);
+                                  setOpenMobileSubmenu(null);
+                                }}
+                              >
+                                {subItem.title} 
+                              </Link>
+                            );
+                          }
+                        })}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="mt-auto pt-4">
+            <hr className="my-2 border-gray-200" />
+            <Link to="/" className="block py-2 px-3 text-black hover:bg-gray-100 rounded-md" onClick={() => setIsMenuOpen(false)}>Главная</Link>
+            <Link to="/about" className="block py-2 px-3 text-black hover:bg-gray-100 rounded-md" onClick={() => setIsMenuOpen(false)}>О нас</Link>
+            <Link to="/contact" className="block py-2 px-3 text-black hover:bg-gray-100 rounded-md" onClick={() => setIsMenuOpen(false)}>Контакты</Link>
+            
+            <hr className="my-2 border-gray-200" />
+            <div className="flex justify-around items-center py-2 px-3">
+              <a href="https://web.whatsapp.com/send?phone=79268792878&text=" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp" className="text-black hover:text-gray-700">
+                <MessageSquare size={24} />
+              </a>
+              <a href="https://t.me/swimwithleah" target="_blank" rel="noopener noreferrer" aria-label="Telegram" className="text-black hover:text-gray-700">
+                <Send size={24} />
+              </a>
+            </div>
+          </div>
         </nav>
       </div>
 
@@ -115,34 +398,47 @@ const Header = () => {
           </button>
         </div>
         <div className="px-4 pb-4 flex flex-col h-full">
-          <span className="text-base font-bold uppercase mb-2">Liked Products</span>
+          <span className="text-base font-bold uppercase mb-2">ИЗБРАННОЕ</span>
           <div className="w-full h-px bg-gray-200 mb-2" />
           <div className="flex-1 overflow-y-auto flex flex-col">
             {likedProducts.length === 0 ? (
-              <div className="text-xs text-gray-400 text-center mt-8">No liked products yet.</div>
+              <div className="text-xs text-gray-400 text-center mt-8">Список избранного пуст.</div>
             ) : (
-              likedProducts.map((id, idx) => {
+              likedProducts.map((id) => {
                 const product = likedProductsCache[id];
                 if (!product) return null;
                 return (
-                  <div key={product.id}>
-                    <div className="flex items-center gap-4 py-2">
-                      <img src={product.images?.[0]?.src || '/placeholder.png'} alt={product.name} className="w-12 h-12 object-cover rounded-lg border" />
-                      <div className="flex-1">
-                        <div className="flex items-center justify-between">
-                          <span className="font-semibold text-sm text-black">{product.name}</span>
-                          <button
-                            className="ml-2 p-1 text-black hover:text-black"
-                            aria-label="Unlike"
-                            onClick={() => toggleLike(product.id, product)}
-                          >
-                            <Heart className="w-5 h-5" fill={'currentColor'} stroke="currentColor" />
-                          </button>
-                        </div>
-                        <span className="text-xs text-gray-600">{product.price ? `₽${product.price}` : 'Price not available'}</span>
+                  <div key={product.id} className="flex py-4 border-b border-gray-100 last:border-b-0 items-start">
+                    <img
+                      src={product.images?.[0]?.src || '/placeholder.png'}
+                      alt={product.name}
+                      className="w-20 h-20 object-cover rounded border mr-4"
+                    />
+                    <div className="flex-1 flex flex-col items-start text-left">
+                      <div className="flex justify-between items-start w-full mb-1">
+                        <span className="font-semibold text-base text-black mr-2">{product.name}</span>
+                        <button
+                          className="p-1 text-gray-500 hover:text-red-600 flex-shrink-0"
+                          aria-label="Unlike"
+                          onClick={() => toggleLike(product.id, product)}
+                        >
+                          <Heart className="w-5 h-5" fill="currentColor" stroke="currentColor" />
+                        </button>
                       </div>
+                      <span className="text-sm text-black font-bold">
+                        {(() => {
+                          const price = product.price;
+                          let displayPrice = 'Цена не указана';
+                          if (price !== undefined && price !== null) {
+                            const numericPrice = parseFloat(String(price).replace(/[^\d.-]/g, ''));
+                            if (!isNaN(numericPrice)) {
+                              displayPrice = `₽${numericPrice.toFixed(2)}`;
+                            }
+                          }
+                          return displayPrice;
+                        })()}
+                      </span>
                     </div>
-                    {idx < likedProducts.length - 1 && <div className="w-full h-px bg-gray-200 my-1" />}
                   </div>
                 );
               })
@@ -153,61 +449,94 @@ const Header = () => {
 
       {/* Cart Side Menu & Overlay - always rendered for animation */}
       <div
-        className={`fixed inset-0 bg-black bg-opacity-50 transition-opacity duration-300 z-40 ${isCartMenuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
-        onClick={() => setIsCartMenuOpen(false)}
-        aria-hidden={!isCartMenuOpen}
+        className={`fixed inset-0 bg-black bg-opacity-50 transition-opacity duration-300 z-40 ${isCartDrawerOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+        onClick={() => setIsCartDrawerOpen(false)}
+        aria-hidden={!isCartDrawerOpen}
       />
       <div
         className={`fixed top-8 right-8 max-w-[400px] w-[90vw] max-h-[80vh] bg-white border border-gray-100 rounded-2xl shadow-2xl z-50 transition-opacity duration-300
-          ${isCartMenuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
-        aria-hidden={!isCartMenuOpen}
+          ${isCartDrawerOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
+        aria-hidden={!isCartDrawerOpen}
       >
         <div className="flex justify-end p-2">
-          <button onClick={() => setIsCartMenuOpen(false)} className="text-black hover:text-gray-600 text-lg">
+          <button onClick={() => setIsCartDrawerOpen(false)} className="text-black hover:text-gray-600 text-lg">
             <X size={20} />
           </button>
         </div>
-        <div className="px-4 pb-4 flex flex-col h-full">
-          <span className="text-base font-bold uppercase mb-2">Shopping Cart</span>
+        <div className="px-4 pb-0 flex flex-col h-full">
+          <span className="text-base font-bold uppercase mb-2">КОРЗИНА</span>
           <div className="w-full h-px bg-gray-200 mb-2" />
-          <div className="flex-1 overflow-y-auto flex flex-col">
-            {!cart || cart.items?.length === 0 ? (
-              <div className="text-xs text-gray-400 text-center mt-8">Your cart is empty.</div>
-            ) : (
-              cart.items.map((item: any, idx: number) => (
-                <div key={item.id}>
-                  <div className="flex items-center gap-4 py-2">
-                    <img src={item.thumbnail || '/placeholder.png'} alt={item.title} className="w-12 h-12 object-cover rounded-lg border" />
-                    <div className="flex-1">
-                      <div className="flex items-center justify-between">
-                        <span className="font-semibold text-sm text-black">{item.title}</span>
-                        <span className="text-sm text-gray-600">Qty: {item.quantity}</span>
-                      </div>
-                      <span className="text-xs text-gray-600">{item.unit_price ? `₽${item.unit_price}` : 'Price not available'}</span>
+          <div className="flex-1 overflow-y-auto">
+            {cart?.items && cart.items.length > 0 ? (
+              cart.items.map((item: any) => (
+                <div key={item.id} className="flex py-4 border-b border-gray-100 last:border-b-0 items-start">
+                  <img
+                    src={item.thumbnail || '/placeholder.png'}
+                    alt={item.title}
+                    className="w-20 h-20 object-cover rounded border mr-4"
+                  />
+                  <div className="flex-1 flex flex-col items-start text-left">
+                    <div className="font-semibold text-base mb-2">{item.title}</div>
+                    <div className="text-sm text-black font-bold">
+                      {(() => {
+                        const price = item.unit_price;
+                        if (typeof price === 'number') return `₽${price.toFixed(2)}`;
+                        if (typeof price === 'string') {
+                          const numericPrice = parseFloat(price.replace(/[^\d.-]/g, ''));
+                          if (!isNaN(numericPrice)) return `₽${numericPrice.toFixed(2)}`;
+                        }
+                        return 'Цена не указана';
+                      })()}
                     </div>
                   </div>
-                  {idx < cart.items.length - 1 && <div className="w-full h-px bg-gray-200 my-1" />}
+                  <button
+                    className="ml-2 text-gray-400 hover:text-black text-xl mt-1 p-1"
+                    onClick={async () => {
+                      if (item.id) {
+                        try {
+                          await removeFromCart(item.id);
+                          console.log(`Item ${item.id} removed from header cart`);
+                        } catch (error) {
+                          console.error("Error removing item from header cart:", error);
+                        }
+                      }
+                    }}
+                    aria-label="Удалить товар"
+                  >
+                    <X size={18} />
+                  </button>
                 </div>
               ))
+            ) : (
+              <div className="text-xs text-gray-400 text-center mt-8">Ваша корзина пуста.</div>
             )}
           </div>
-          {cart && cart.items?.length > 0 && (
-            <div className="mt-4 pt-4 border-t border-gray-200">
-              <div className="flex justify-between items-center mb-4">
-                <span className="font-semibold text-sm">Total:</span>
-                <span className="font-semibold text-sm">{cart.total ? `₽${cart.total}` : 'Price not available'}</span>
+          <div className="pt-4 pb-6 bg-white sticky bottom-0 left-0 right-0 z-10">
+            {cart?.items && cart.items.length > 0 && (
+              <div className="flex justify-between items-center mb-3 px-1">
+                <span className="text-lg font-semibold">ИТОГО:</span>
+                <span className="text-lg font-bold">
+                  {(() => {
+                    const totalValue = cart.total;
+                    let numericTotal = NaN;
+                    if (typeof totalValue === 'number') {
+                      numericTotal = totalValue;
+                    } else if (typeof totalValue === 'string') {
+                      numericTotal = parseFloat(totalValue.replace(/[^\d.-]/g, ''));
+                    }
+                    return !isNaN(numericTotal) ? `₽${numericTotal.toFixed(2)}` : 'N/A';
+                  })()}
+                </span>
               </div>
-              <button
-                className="w-full bg-black text-white py-3 font-bold uppercase tracking-wider text-xs rounded"
-                onClick={() => {
-                  setIsCartMenuOpen(false);
-                  navigate('/checkout');
-                }}
-              >
-                Checkout
-              </button>
-            </div>
-          )}
+            )}
+            <button
+              className="w-full bg-black text-white py-3 font-bold uppercase tracking-wider text-xs rounded"
+              disabled={!(cart && cart.items && cart.items.length > 0)}
+              onClick={handleCheckout}
+            >
+              ОФОРМИТЬ ЗАКАЗ
+            </button>
+          </div>
         </div>
       </div>
     </header>

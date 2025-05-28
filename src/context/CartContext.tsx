@@ -3,6 +3,7 @@ import { createContext, useContext, useEffect, useState, ReactNode, useCallback 
 // Define the structure for a cart item
 interface CartItem {
   id: string; // Product or Variant ID
+  parentId?: string; // Parent Product ID, if this item is a variation
   title: string;
   unit_price: string; // Price as a string, e.g., "100.00" or "₽1000"
   quantity: number;
@@ -19,7 +20,9 @@ interface CartState {
 interface CartContextType {
   cart: CartState;
   loading: boolean; // Kept for potential async operations or future use
-  addToCart: (itemDetails: Omit<CartItem, 'quantity' | 'total'>, quantity: number) => Promise<void>;
+  isCartDrawerOpen: boolean; // New state for drawer visibility
+  setIsCartDrawerOpen: (isOpen: boolean) => void; // New setter for drawer visibility
+  addToCart: (itemDetails: Omit<CartItem, 'quantity' | 'total'> & { parentId?: string }, quantity: number) => Promise<void>;
   removeFromCart: (itemId: string) => Promise<void>;
   updateItemQuantity: (itemId: string, newQuantity: number) => Promise<void>;
   clearCart: () => Promise<void>;
@@ -50,6 +53,7 @@ const calculateTotal = (items: CartItem[]): string => {
 export const CartProvider = ({ children }: { children: ReactNode }) => {
   const [cart, setCart] = useState<CartState>({ items: [], total: '₽0.00' });
   const [loading, setLoading] = useState(true); // For initial load
+  const [isCartDrawerOpen, setIsCartDrawerOpen] = useState(false); // New state variable for drawer
 
   // Load cart from localStorage on mount
   useEffect(() => {
@@ -85,17 +89,26 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
     localStorage.setItem('local_cart', JSON.stringify(newCartState));
   }, []);
 
-  const addToCart = useCallback(async (itemDetails: Omit<CartItem, 'quantity' | 'total'>, quantity: number) => {
+  const addToCart = useCallback(async (itemDetails: Omit<CartItem, 'quantity' | 'total'> & { parentId?: string }, quantity: number) => {
     setLoading(true);
     const currentItems = [...cart.items];
+    // If itemDetails.id is a variation, existingItemIndex should check this variation ID.
+    // If it's a simple product, it checks the product ID.
     const existingItemIndex = currentItems.findIndex(i => i.id === String(itemDetails.id));
 
     if (existingItemIndex > -1) {
       currentItems[existingItemIndex].quantity += quantity;
     } else {
-      currentItems.push({ ...itemDetails, id: String(itemDetails.id), quantity });
+      // Ensure parentId from itemDetails is passed to the new cart item object
+      currentItems.push({ 
+        ...itemDetails, 
+        id: String(itemDetails.id), 
+        parentId: itemDetails.parentId, // Store parentId
+        quantity 
+      });
     }
     updateCartStateAndStorage(currentItems);
+    // setIsCartDrawerOpen(true); // Open cart drawer on adding item - REMOVED/COMMENTED OUT
     setLoading(false);
   }, [cart.items, updateCartStateAndStorage]);
 
@@ -130,7 +143,7 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
   }, [updateCartStateAndStorage]);
 
   return (
-    <CartContext.Provider value={{ cart, loading, addToCart, removeFromCart, updateItemQuantity, clearCart }}>
+    <CartContext.Provider value={{ cart, loading, isCartDrawerOpen, setIsCartDrawerOpen, addToCart, removeFromCart, updateItemQuantity, clearCart }}>
       {children}
     </CartContext.Provider>
   );

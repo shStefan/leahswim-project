@@ -1,5 +1,3 @@
-import React from 'react';
-
 interface ProductCardSkeletonProps {
   delay?: string; // e.g. '0ms', '120ms', etc.
 }

@@ -5,6 +5,8 @@ import { Link, useParams, useLocation, useNavigate, useSearchParams } from 'reac
 import { useCart } from '../context/CartContext';
 import { useLikes } from '../context/LikesContext';
 import { ProductPageSkeleton } from '../components/ProductPageSkeleton';
+import { RelatedProductsSlider } from '../components/RelatedProductsSlider';
+import SizeChartModal from '../components/SizeChartModal'; // Import the modal
 
 interface MediaItem {
   type: 'image' | 'video';
@@ -24,9 +26,12 @@ interface Product {
   name: string;
   price: string;
   description: string;
+  short_description?: string;
   images: Array<{ id: number; src: string }>;
   attributes: ProductAttribute[];
   variations?: number[];
+  type?: string;
+  categories?: any[]; // Added categories property
 }
 
 // Interface for individual product variations
@@ -35,6 +40,11 @@ interface ProductVariation {
   attributes: Array<{ id: number; name: string; slug: string; option: string }>;
   image?: { id: number; src: string; name: string; alt: string }; // Image is optional
   price?: string;
+  description?: string; // Added optional description field
+  variation_gallery?: { // Added for variation-specific galleries
+    ids: number[];
+    urls: string[];
+  };
   // Add other variation-specific fields if needed
 }
 
@@ -44,68 +54,165 @@ const WC_CONSUMER_SECRET = 'cs_7b0d34c68e68a5ae5cebf19a6d23338ab83de571';
 const WC_API_URL = 'https://zdqksnii.elementor.cloud/wp-json/wc/v3';
 
 export const ProductPage = (): JSX.Element => {
-  const { id } = useParams<{ id: string }>();
+  const { id: idFromParams } = useParams<{ id:string }>();
   const location = useLocation();
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
-  const [product, setProduct] = useState<Product | null>(null);
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Determine product ID and initial selected color from location state or URL
+  const linkState = location.state as { parentProductId?: string; selectedColor?: string; productData?: any }; // productData is DisplayableProduct
+  const productIdToFetch = linkState?.parentProductId || idFromParams;
+  const initialSelectedColorFromStateOrUrl = linkState?.selectedColor || searchParams.get('print');
+
+  const [product, setProduct] = useState<Product | null>(
+    linkState?.productData ? 
+    { // Pre-fill from DisplayableProduct if available
+      id: parseInt(linkState.productData.parentId),
+      name: linkState.productData.name,
+      price: linkState.productData.price,
+      images: linkState.productData.originalImages || [{id: 0, src: linkState.productData.imageSrc}],
+      description: '', // Will be fetched
+      short_description: '', // Will be fetched
+      attributes: linkState.productData.attributes || [],
+      categories: linkState.productData.categories || [], // Added categories pre-fill
+      // variations will be fetched
+    } 
+    : null
+  );
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
-  const [selectedColor, setSelectedColor] = useState<string | null>(null);
+  const [selectedColor, setSelectedColor] = useState<string | null>(initialSelectedColorFromStateOrUrl);
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
-  const [isCartDrawerOpen, setIsCartDrawerOpen] = useState(false);
-  const { cart, loading: cartLoading, addToCart } = useCart();
+  const [isMenuOpen, setIsMenuOpen] = useState(false); 
+  // const [isCartDrawerOpen, setIsCartDrawerOpen] = useState(false); // This local state is not used for the Header's cart, but might be for a local cart UI if any
+  const { cart, loading: cartLoading, addToCart, removeFromCart, isCartDrawerOpen, setIsCartDrawerOpen } = useCart(); // use isCartDrawerOpen from context for the product page cart drawer
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [allColors, setAllColors] = useState<string[]>([]);
   const { likedProducts, toggleLike } = useLikes();
   const [productVariations, setProductVariations] = useState<ProductVariation[]>([]);
+  const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
+  const [loadingRelated, setLoadingRelated] = useState<boolean>(false);
+  const [isSizeChartModalOpen, setIsSizeChartModalOpen] = useState(false); // State for size chart modal
 
-  // Stub remove item handler (to be implemented with WooCommerce cart later)
-  const handleRemoveItem = (itemId: string): void => {
-    console.log('Remove item clicked:', itemId);
+  // Scroll to top on component mount
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, []);
+
+  // Updated currentVariation logic with enhanced safety checks
+  const currentVariation = useMemo(() => {
+    // Initial guards: need variations and a selected size.
+    if (!productVariations || productVariations.length === 0 || !selectedSize) {
+      return null;
+    }
+
+    // Case 1: Product has color options (allColors array is populated)
+    if (allColors && allColors.length > 0) {
+      // If color options exist, a color must be selected.
+      if (!selectedColor) {
+        return null;
+      }
+      // Find a variation that matches both the selected color and selected size.
+      return productVariations.find(variation => {
+        // Ensure the variation and its attributes array are valid.
+        if (!variation || !Array.isArray(variation.attributes)) {
+          return false;
+        }
+        // Check for a matching color attribute.
+        const hasMatchingColor = variation.attributes.some(attr =>
+          attr && // Ensure attribute exists
+          (attr.slug === 'pa_print' || // Match by slug 'pa_print'
+            (attr.name && attr.name.toLowerCase() === 'принт') || // Match by name 'принт'
+            (attr.name && attr.name.toLowerCase() === 'color')) && // Match by name 'color'
+          attr.option === selectedColor // Option must match selectedColor
+        );
+        // If no color match, this variation is not the one.
+        if (!hasMatchingColor) {
+          return false;
+        }
+        // Check for a matching size attribute.
+        return variation.attributes.some(attr =>
+          attr && // Ensure attribute exists
+          (attr.slug === 'pa_size' || // Match by slug 'pa_size'
+            (attr.name && attr.name.toLowerCase() === 'размер')) && // Match by name 'размер'
+          attr.option === selectedSize // Option must match selectedSize
+        );
+      });
+    } else {
+      // Case 2: Product does NOT have color options (allColors array is empty)
+      // Find a variation that matches the selected size only. Color is not a criterion.
+      return productVariations.find(variation => {
+        // Ensure the variation and its attributes array are valid.
+        if (!variation || !Array.isArray(variation.attributes)) {
+          return false;
+        }
+        // Check for a matching size attribute.
+        return variation.attributes.some(attr =>
+          attr && // Ensure attribute exists
+          (attr.slug === 'pa_size' || // Match by slug 'pa_size'
+            (attr.name && attr.name.toLowerCase() === 'размер')) && // Match by name 'размер'
+          attr.option === selectedSize // Option must match selectedSize
+        );
+      });
+    }
+  }, [productVariations, selectedColor, selectedSize, allColors]);
+
+  // Updated to use removeFromCart from context
+  const handleRemoveItem = async (itemId: string): Promise<void> => {
+    console.log('Attempting to remove item from cart:', itemId);
+    try {
+      await removeFromCart(itemId);
+      console.log('Item removal processed by context for:', itemId);
+      // Optional: Add any local state updates or notifications if needed
+    } catch (err) {
+      console.error('Error removing item from cart:', err);
+      // Optional: Display an error message to the user
+    }
   };
 
   // Calculate total cart quantity
   const cartCount = cart?.items?.reduce((sum: number, item: any) => sum + item.quantity, 0) || 0;
 
-  // Effect to update selectedColor based on URL search parameter 'print'
+  // Effect to update URL search parameter 'print' when selectedColor changes
   useEffect(() => {
-    const printParam = searchParams.get('print');
-    if (printParam && allColors.includes(printParam)) {
-      if (selectedColor !== printParam) { // Only update if different to avoid loops
-        setSelectedColor(printParam);
-      }
-    } else if (!printParam && product && allColors.length > 0 && selectedColor !== allColors[0]) {
-      // If no print param, and product is loaded, set to default (first color), if not already set.
-      // This handles initial load default or clearing selection if print param is removed.
-      // And also ensures we don't navigate away if the first color is already selected.
-      // setSelectedColor(allColors[0]); // Keep this commented for now, initial set in fetchProductData
+    const currentPrintParam = searchParams.get('print');
+    if (selectedColor && selectedColor !== currentPrintParam) {
+      const newSearchParams = new URLSearchParams(searchParams);
+      newSearchParams.set('print', selectedColor);
+      setSearchParams(newSearchParams, { replace: true });
+    } else if (!selectedColor && currentPrintParam) {
+      // If selectedColor is cleared, remove 'print' from URL
+      const newSearchParams = new URLSearchParams(searchParams);
+      newSearchParams.delete('print');
+      setSearchParams(newSearchParams, { replace: true });
     }
-  }, [searchParams, allColors, product, selectedColor]); // selectedColor added to prevent potential re-runs if default logic is complex
+    // No navigation based on selectedColor here, ProductPage is already loaded.
+    // The primary role is to keep URL in sync.
+  }, [selectedColor, searchParams, setSearchParams]);
 
   // Get product data (main product and then variations)
   useEffect(() => {
-    const fetchProductData = async () => {
-      if (!id) return;
+    // Changed to accept productId as an argument
+    const fetchProductData = async (currentProductId: string | undefined) => { 
+      if (!currentProductId) return;
       setLoading(true);
-      setError(null);
-      setProduct(null); // Reset product and variations on ID change
-      setProductVariations([]);
-      setAllColors([]);
-      setSelectedColor(null);
-      setSelectedSize(null);
+      // setError(null); // Keep error until new data is successfully fetched or truly fails
+      // setProduct(null); // Don't nullify if we have pre-filled data
+      // setProductVariations([]);
+      // setAllColors([]);
+      // setSelectedColor(null); // Initial selected color is now handled by state initialization
+      // setSelectedSize(null);
 
       try {
         // Define fetch promises
-        const productPromise = fetch(`${WC_API_URL}/products/${id}`, {
+        const productPromise = fetch(`${WC_API_URL}/products/${currentProductId}`, {
           headers: {
             'Authorization': 'Basic ' + btoa(WC_CONSUMER_KEY + ':' + WC_CONSUMER_SECRET)
           }
         });
 
-        const variationsPromise = fetch(`${WC_API_URL}/products/${id}/variations?per_page=100`, {
+        const variationsPromise = fetch(`${WC_API_URL}/products/${currentProductId}/variations?per_page=100`, {
           headers: {
             'Authorization': 'Basic ' + btoa(WC_CONSUMER_KEY + ':' + WC_CONSUMER_SECRET)
           }
@@ -122,6 +229,7 @@ export const ProductPage = (): JSX.Element => {
         }
         const productData: Product = await productResponse.json();
         setProduct(productData);
+        console.log('Fetched product data:', productData); // Log the entire product data
 
         if (!variationsResponse.ok) {
           // It might not be critical if variations fail to load, product can still be shown
@@ -141,14 +249,17 @@ export const ProductPage = (): JSX.Element => {
         const colors = printAttribute?.options || [];
         setAllColors(colors);
 
-        // Set initial selected color and size
-        // Use searchParams first, then default to first available from product attributes
-        const initialPrintFromUrl = searchParams.get('print');
-        if (initialPrintFromUrl && colors.includes(initialPrintFromUrl)) {
-          setSelectedColor(initialPrintFromUrl);
-        } else if (colors.length > 0) {
+        // Set initial selected color and size (or confirm existing from link state/URL)
+        // The selectedColor state is already initialized from linkState or URL param.
+        // Here, we just ensure it's valid if it came from URL, or set default if nothing was provided.
+        if (initialSelectedColorFromStateOrUrl && colors.includes(initialSelectedColorFromStateOrUrl)) {
+          if (selectedColor !== initialSelectedColorFromStateOrUrl) { // Sync if different
+             setSelectedColor(initialSelectedColorFromStateOrUrl);
+          }
+        } else if (colors.length > 0 && !selectedColor) { // Only set default if no color is selected yet
           setSelectedColor(colors[0]);
         }
+        // If selectedColor was already set (e.g. from link state) and is valid, it remains.
 
         const sizeAttribute = productData.attributes?.find((attr: ProductAttribute) => 
           attr.name.toLowerCase() === 'размер' || 
@@ -167,39 +278,50 @@ export const ProductPage = (): JSX.Element => {
       }
     };
 
-    if (location.state?.product) {
-      // If product data is passed via location state, use it directly
-      // This path is less likely now with parallel fetching but kept as a potential optimization
-      const productData = location.state.product as Product; // Type assertion
-      setProduct(productData);
-      const printAttribute = productData.attributes?.find((attr) => attr.slug === 'pa_print');
-      setAllColors(printAttribute?.options || []);
-      
-      const initialPrintFromUrl = searchParams.get('print');
-      if (initialPrintFromUrl && (printAttribute?.options?.includes(initialPrintFromUrl))) {
-        setSelectedColor(initialPrintFromUrl);
-      } else if (printAttribute?.options?.length) {
-        setSelectedColor(printAttribute.options[0]);
-      }
-      
-      // If variations are also in state, set them, otherwise fetch them.
-      if (location.state.variations) {
-         setProductVariations(location.state.variations as ProductVariation[]);
-         setLoading(false);
-      } else if (productData.variations && productData.variations.length > 0) {
-        // Variations IDs are present, but not the full data - trigger fetch.
-        // This specific scenario is less likely if we always fetch variations in parallel.
-        // Consider removing this else-if if fetchProductData() always gets variations.
-        fetchProductData(); // This will re-fetch product too, could be optimized to only fetch variations
+    // if (location.state?.product) { // Old logic for location.state.product
+      // This block will be mostly replaced by the pre-fill in useState and the direct call to fetchProductData
+    // } else {
+    // Always fetch, productIdToFetch will be from state or params
+    fetchProductData(productIdToFetch); 
+    // }
+
+  }, [productIdToFetch]); // location.state is not a stable dependency, use derived productIdToFetch
+
+  // Fetch related products when main product data is available
+  useEffect(() => {
+    if (product && product.categories && product.categories.length > 0) {
+      const firstCategoryId = product.categories[0].id;
+      if (firstCategoryId) {
+        setLoadingRelated(true);
+        console.log(`Fetching related products for category ID: ${firstCategoryId}, excluding product ID: ${product.id}`); 
+        fetch(`${WC_API_URL}/products?category=${firstCategoryId}&per_page=10&exclude=${product.id}`, { // Exclude current product
+          headers: {
+            'Authorization': 'Basic ' + btoa(WC_CONSUMER_KEY + ':' + WC_CONSUMER_SECRET)
+          }
+        })
+        .then(res => res.json())
+        .then((data: Product[]) => { // Ensure type is Product[]
+          console.log('[ProductPage] Fetched related products raw data:', data);
+          const filteredRelatedProducts = data.filter(p => p.id !== product.id);
+          console.log('[ProductPage] Filtered related products (to be set in state):', filteredRelatedProducts);
+          setRelatedProducts(filteredRelatedProducts); // Double check exclusion
+          setLoadingRelated(false);
+        })
+        .catch(err => {
+          console.error("Error fetching related products:", err);
+          setLoadingRelated(false);
+        });
       } else {
-         setLoading(false); // No variations to fetch
+        console.warn("Could not fetch related products: firstCategoryId is missing or invalid.", product.categories);
+        setLoadingRelated(false); // Ensure loading is stopped
+        setRelatedProducts([]);   // Ensure related products is empty
       }
-
-    } else if (id) { // Only fetch if id is present
-      fetchProductData();
+    } else {
+      console.warn("Could not fetch related products: product or product.categories are missing or empty.", product);
+      setLoadingRelated(false); // Ensure loading is stopped
+      setRelatedProducts([]);   // Ensure related products is empty
     }
-
-  }, [id, location.state]); // REMOVED searchParams, this effect now ONLY runs on ID or location.state change
+  }, [product]); // Depends on product
 
   // Memoize the color to image mapping
   const colorImageMap = useMemo(() => {
@@ -224,38 +346,73 @@ export const ProductPage = (): JSX.Element => {
   // Media items for the gallery
   const mediaItems: MediaItem[] = useMemo(() => {
     const items: MediaItem[] = [];
-    const addedUrls = new Set<string>(); // Use a Set for efficient tracking of added URLs
+    const addedUrls = new Set<string>(); // To prevent duplicate media by URL
 
-    // Start with the main/selected color image if available
-    if (mainImage && mainImage !== '/placeholder.png') {
-      items.push({ type: 'image', url: mainImage });
-      addedUrls.add(mainImage);
+    if (currentVariation) {
+      // 1. Variation-specific gallery (if available)
+      if (currentVariation.variation_gallery && currentVariation.variation_gallery.urls && currentVariation.variation_gallery.urls.length > 0) {
+        currentVariation.variation_gallery.urls.forEach(url => {
+          if (url && !addedUrls.has(url)) {
+            items.push({ type: 'image', url });
+            addedUrls.add(url);
+          }
+        });
+      }
+
+      // 2. Video from selected variation's description (if not already covered by gallery logic)
+      if (currentVariation.description && typeof currentVariation.description === 'string') {
+        const videoMatch = currentVariation.description.match(/<video.*?src=["'](.*?)["']/i);
+        if (videoMatch && videoMatch[1]) {
+          const videoUrl = videoMatch[1];
+          if (!addedUrls.has(videoUrl)) { // Check if video URL itself is already added
+            const posterUrl = currentVariation.image?.src; 
+            // Try to use variation image as poster, only if it's not the video itself
+            const actualPoster = (posterUrl && posterUrl !== videoUrl && !addedUrls.has(posterUrl)) ? posterUrl : undefined;
+            
+            items.unshift({ // Add video to the beginning if found
+              type: 'video', 
+              url: videoUrl, 
+              thumbnail: actualPoster
+            });
+            addedUrls.add(videoUrl);
+            if (actualPoster) addedUrls.add(actualPoster);
+          }
+        }
+      }
+
+      // 3. Selected variation's main image (if not already added)
+      if (currentVariation.image?.src) { // Check currentVariation.image first
+        const imageUrl = currentVariation.image.src;
+        if (!addedUrls.has(imageUrl)) {
+          items.push({ type: 'image', url: imageUrl });
+          addedUrls.add(imageUrl);
+        }
+      }
+    } else if (mainImage && mainImage !== '/placeholder.png') {
+      // Fallback to mainImage (derived from selectedColor or parent product's first image)
+      // if no specific currentVariation is resolved but a mainImage is determined
+       if (!addedUrls.has(mainImage)) {
+        items.push({ type: 'image', url: mainImage });
+        addedUrls.add(mainImage);
+      }
     }
 
-    // Add other variation images (excluding the one already added as mainImage)
-    const allVariationImageUrls = Object.values(colorImageMap);
-    allVariationImageUrls.forEach(url => {
-      if (url && !addedUrls.has(url)) { // Check if URL is valid and not already added
-        items.push({ type: 'image', url });
-        addedUrls.add(url);
-      }
-    });
-
-    // Add default product images not already included
+    // 4. Add images from the parent product's gallery (`product.images`)
+    // This acts as a fallback or supplement if variation-specific media is limited.
     product?.images?.forEach(img => {
-      if (img.src && !addedUrls.has(img.src)) { // Check if img.src is valid and not already added
+      if (img.src && !addedUrls.has(img.src)) {
         items.push({ type: 'image', url: img.src });
         addedUrls.add(img.src);
       }
     });
     
-    // If no images found at all, add a placeholder explicitly
+    // If after all this, no media items, add a default placeholder
     if (items.length === 0) {
        return [{ type: 'image', url: '/placeholder.png' }];
     }
 
     return items;
-  }, [mainImage, colorImageMap, product]);
+  }, [product, currentVariation, mainImage]); // colorImageMap might be less relevant now with direct variation_gallery
 
   // Reset media index only when mediaItems array itself changes (e.g. new product loaded)
   useEffect(() => {
@@ -263,38 +420,58 @@ export const ProductPage = (): JSX.Element => {
   }, [mediaItems]); // Only depends on mediaItems directly, not its length or the index itself
 
   const nextMedia = () => {
-    if (mediaItems.length === 0) return;
-    setCurrentMediaIndex((prev) => (prev + 1) % mediaItems.length);
+    if (!product || !mediaItems || mediaItems.length === 0) return;
+    setCurrentMediaIndex((prevIndex) => (prevIndex + 1) % mediaItems.length);
   };
 
   const prevMedia = () => {
-    if (mediaItems.length === 0) return;
-    setCurrentMediaIndex((prev) => (prev - 1 + mediaItems.length) % mediaItems.length);
+    if (!product || !mediaItems || mediaItems.length === 0) return;
+    setCurrentMediaIndex((prevIndex) => (prevIndex - 1 + mediaItems.length) % mediaItems.length);
   };
 
   const handleAddToCart = async () => {
-    if (!selectedSize || !selectedColor || !product) {
-      // Optionally, display a message to the user to select size and color
-      console.warn("Please select size and color before adding to cart.");
+    if (!product) return;
+
+    // Determine ID and Parent ID for cart item
+    let itemIdToAdd: string;
+    let itemParentId: string | undefined = undefined;
+    let itemPrice = product.price; // Default to parent product price
+    let itemThumbnail = product.images?.[0]?.src;
+
+    if (currentVariation) {
+      itemIdToAdd = String(currentVariation.id);
+      itemParentId = String(product.id); // Parent product's ID
+      if (currentVariation.price) itemPrice = currentVariation.price;
+      if (currentVariation.image?.src) itemThumbnail = currentVariation.image.src;
+    } else if (product.type === 'simple') { // Assuming you have a 'type' field or similar logic for simple products
+      itemIdToAdd = String(product.id);
+      // itemParentId remains undefined for simple products
+    } else {
+      // It's a variable product but no specific variation selected (e.g. if size not chosen yet)
+      // Optionally, prevent adding to cart or add default variation if applicable
+      alert("Пожалуйста, выберите все опции товара (например, размер).");
+      return;
+    }
+
+    if (!itemIdToAdd) {
+      console.error('Cannot add to cart: item ID is missing.');
       return;
     }
 
     const itemDetails = {
-      id: String(product.id), // Using product ID as the primary ID for the item
-      // Consider creating a more specific variant ID if sizes/colors affect SKU or price significantly
-      // For example: id: `${product.id}-${selectedColor}-${selectedSize}`,
-      title: product.name,
-      unit_price: product.price, // Assuming product.price is like "₽123.00"
-      thumbnail: mainImage || product?.images?.[0]?.src || '/placeholder.png' // Use the current mainImage for thumbnail
-      // You might want to add selectedSize and selectedColor to itemDetails if they should be displayed in the cart
+      id: itemIdToAdd,
+      parentId: itemParentId,
+      title: product.name + (currentVariation ? ` - ${selectedColor} / ${selectedSize}` : ''), // Add variation details to title
+      unit_price: itemPrice,
+      thumbnail: itemThumbnail || '/placeholder.png',
     };
 
     try {
-      await addToCart(itemDetails, 1); // Pass the itemDetails object and quantity
-      setIsCartDrawerOpen(true); // Keep this to open the cart drawer/modal
-      console.log('Product added to local cart:', itemDetails);
-    } catch (error) {
-      console.error('Error adding to local cart:', error);
+      await addToCart(itemDetails, 1); // Assuming quantity is 1
+      setIsCartDrawerOpen(true); // Open cart drawer on successful add
+    } catch (err) {
+      console.error("Error adding to cart from ProductPage:", err);
+      // Handle error (e.g., show a notification)
     }
   };
 
@@ -350,6 +527,16 @@ export const ProductPage = (): JSX.Element => {
       'red': '#FF0000',
       'white': '#FFFFFF',
       'black': '#000000',
+      // Added new mappings based on console logs and common interpretations
+      'natural': '#F0E68C',       // Khaki
+      'коралл': '#FF7F50',        // Coral (standard Russian)
+      'фиолетовый': '#800080',    // Purple (standard Russian)
+      'чёрный': '#000000',         // Black (standard Russian)
+      'коралл черный': '#4A4A4A', // Dark Grey / Blackish Coral
+      'avorio mocaccino': '#F5F5DC',// Beige / Ivory Moccachino
+      'jelly bean': '#DA2C43',      // Jelly Bean Red
+      'lilac': '#C8A2C8',         // Lilac
+      'sicilia': '#F28C28',        // Sicilian Orange
     };
 
     // Try to find an exact match first
@@ -399,7 +586,7 @@ export const ProductPage = (): JSX.Element => {
 
   return (
     <div className="min-h-screen bg-white">
-      <div className="w-full flex flex-col md:flex-row mt-20 md:gap-12 md:px-[30px]">
+      <div className="w-full flex flex-col md:flex-row mt-0 md:mt-20 md:gap-12 md:px-[30px] md:max-w-7xl md:mx-auto">
         {/* Left side - Media gallery */}
         <div className="w-full md:w-2/3 flex relative">
           <div className="hidden md:flex flex-col gap-2 p-4">
@@ -447,7 +634,7 @@ export const ProductPage = (): JSX.Element => {
                   loop
                   muted
                   playsInline
-                  controls={false}
+                  controls={true}
                 />
               </div>
             ) : (
@@ -496,7 +683,7 @@ export const ProductPage = (): JSX.Element => {
         {/* Right side - Product info */}
         <div className="w-full md:w-1/3 p-6 md:p-8">
           <div className="flex justify-between items-start">
-            <h1 className="[font-family:'Bebas_Neue',Helvetica] text-2xl">{product.name}</h1>
+            <h1 className="font-sans text-2xl">{product.name}</h1>
             <button
               className="ml-2 p-1 text-black hover:text-black"
               aria-label="Like"
@@ -508,50 +695,54 @@ export const ProductPage = (): JSX.Element => {
             </button>
           </div>
 
-          <p className="mt-2 [font-family:'Archivo_Narrow',Helvetica] text-lg">
+          <p className="font-sans mt-2 text-lg">
             {product.price ? `₽${product.price}` : 'Price not available'}
           </p>
 
           {/* Color selector */}
-          <div className="mt-8">
-            <p className="[font-family:'Archivo_Narrow',Helvetica] mb-2">Select Color</p>
-            <div className="flex space-x-2">
-              {allColors.map((color) => (
-                <button
-                  key={String(color)}
-                  onClick={() => {
-                    navigate(`/product/${id}?print=${encodeURIComponent(String(color))}`);
-                  }}
-                  className="inline-block"
-                >
-                  <span
-                    className={
-                      'w-8 h-8 rounded-full border-2 inline-block ' +
-                      (selectedColor === color ? 'border-black' : 'border-gray-300')
-                    }
-                    style={{ backgroundColor: getColorHex(String(color)) }}
+          {allColors && allColors.length > 0 && (
+            <div className="mt-8">
+              <p className="font-sans mb-2">Выберите цвет</p>
+              <div className="flex items-center space-x-2 mt-4">
+                {(allColors || []).map((color) => (
+                  <button
+                    key={String(color)}
+                    onClick={() => {
+                      setSelectedColor(String(color)); // Just update state, useEffect will sync URL
+                    }}
+                    className="inline-block p-0.5 border border-transparent rounded-full focus:outline-none transition-all duration-150 ease-in-out"
+                    style={selectedColor === color ? { borderColor: getColorHex(String(color)) } : {}}
                     title={String(color)}
-                  />
-                </button>
-              ))}
+                  >
+                    <span
+                      className={`block w-6 h-6 md:w-8 md:h-8 rounded-full border border-gray-300 hover:border-black`}
+                      style={{
+                        backgroundColor: getColorHex(String(color)),
+                        // Apply a ring effect if this color is selected
+                        boxShadow: selectedColor === color ? `0 0 0 2px white, 0 0 0 4px ${getColorHex(String(color))}` : 'none'
+                      }}
+                    ></span>
+                  </button>
+                ))}
+              </div>
+              {selectedColor && (
+                <div className="mt-2 text-sm text-gray-600">Выбранный цвет: <span className="font-semibold">{selectedColor}</span></div>
+              )}
             </div>
-            {selectedColor && (
-              <div className="mt-2 text-sm text-gray-600">Selected color: <span className="font-semibold">{selectedColor}</span></div>
-            )}
-          </div>
+          )}
 
           {/* Size selector */}
           <div className="mt-8">
-            <p className="[font-family:'Archivo_Narrow',Helvetica] mb-2">Select Size</p>
-            <div className="grid grid-cols-6 gap-2">
+            <p className="font-sans mb-2">Выберите размер</p>
+            <div className="flex flex-wrap gap-2">
               {allSizes.map((size: string) => (
                 <button
                   key={size}
-                  className={'h-10 border ' + 
-                    (selectedSize === size
-                      ? 'border-black bg-black text-white'
-                      : 'border-gray-300 hover:border-black')
-                  }
+                  className={`px-4 py-2 border rounded-full text-sm font-medium transition-colors duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-black ${
+                    selectedSize === size
+                      ? 'bg-black text-white border-black'
+                      : 'bg-white text-gray-700 border-gray-300 hover:border-black hover:text-black'
+                  }`}
                   onClick={() => setSelectedSize(size)}
                 >
                   {size}
@@ -559,45 +750,72 @@ export const ProductPage = (): JSX.Element => {
               ))}
             </div>
             {selectedSize && (
-              <div className="mt-2 text-sm text-gray-600">Selected size: <span className="font-semibold">{selectedSize}</span></div>
+              <div className="mt-2 text-sm text-gray-600">Выбранный размер: <span className="font-semibold">{selectedSize}</span></div>
             )}
-            <button className="mt-2 text-sm underline">What Size Am I?</button>
+            <button 
+              className="mt-2 text-sm underline"
+              onClick={() => setIsSizeChartModalOpen(true)}
+            >
+              Размерная сетка
+            </button>
           </div>
 
           {/* Add to cart button */}
           <Button
-            className="w-full h-12 mt-8 bg-black text-white hover:bg-gray-900 [font-family:'Bebas_Neue',Helvetica]"
-            disabled={!selectedSize || !selectedColor || cartLoading}
+            className="font-sans w-full h-12 mt-8 bg-black text-white hover:bg-gray-900"
+            disabled={cartLoading || (allColors && allColors.length > 0 ? (!selectedSize || !selectedColor) : !selectedSize)}
             onClick={handleAddToCart}
           >
-            {cartLoading ? 'ADDING...' : 'ADD TO CART'}
+            {cartLoading ? 'ДОБАВЛЕНИЕ...' : 'В КОРЗИНУ'}
           </Button>
 
           {/* Expandable sections */}
           <div className="mt-8 space-y-4">
-            {['DESCRIPTION', 'CARE AND COMPOSITION', 'DELIVERY AND RETURNS'].map((section) => (
-              <div key={section} className="border-t border-gray-200">
+            {[ 
+              { title: 'Параметры изделия', contentKey: 'description' },
+              { title: 'Доставка', contentKey: 'delivery' },
+              { title: 'Возврат', contentKey: 'returns' }
+            ].map((section) => (
+              <div key={section.title} className="border-t border-gray-200">
                 <button
                   className="w-full py-4 flex justify-between items-center"
-                  onClick={() => toggleSection(section)}
+                  onClick={() => toggleSection(section.contentKey)}
                 >
-                  <span className="[font-family:'Bebas_Neue',Helvetica]">{section}</span>
+                  <span className="font-sans">{section.title}</span>
                   <ChevronDown
                     className={'w-5 h-5 transition-transform ' + 
-                      (expandedSection === section ? 'rotate-180' : '')
+                      (expandedSection === section.contentKey ? 'rotate-180' : '')
                     }
                   />
                 </button>
-                {expandedSection === section && (
-                  <div className="pb-4 [font-family:'Archivo_Narrow',Helvetica]">
-                    {/* Placeholder content */}
-                    Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.
+                {expandedSection === section.contentKey && (
+                  <div className="font-sans pb-4">
+                    {section.contentKey === 'description' ? (
+                      product.short_description ? (
+                        <div dangerouslySetInnerHTML={{ __html: product.short_description }} />
+                      ) : product.description ? (
+                        <div dangerouslySetInnerHTML={{ __html: product.description }} />
+                      ) : (
+                        'Описание товара отсутствует.'
+                      )
+                    ) : section.contentKey === 'delivery' ? (
+                      'Information about delivery.' // Placeholder
+                    ) : section.contentKey === 'returns' ? (
+                      'Information about returns.' // Placeholder
+                    ) : (
+                      'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.'
+                    )}
                   </div>
                 )}
               </div>
             ))}
           </div>
         </div>
+      </div>
+
+      {/* Wrapper for Related Products Slider to align with page content */}
+      <div className="w-full md:max-w-7xl md:mx-auto md:px-[30px] mb-8">
+        <RelatedProductsSlider products={relatedProducts} loading={loadingRelated} title="Вам также может понравиться" />
       </div>
 
       {/* Cart Drawer (right side) */}
@@ -621,7 +839,7 @@ export const ProductPage = (): JSX.Element => {
           </div>
           {/* Cart content */}
           <div className="px-4 pb-0 flex flex-col h-full">
-            <span className="text-base font-bold uppercase mb-2">Cart</span>
+            <span className="text-base font-bold uppercase mb-2">КОРЗИНА</span>
             <div className="w-full h-px bg-gray-200 mb-2" />
             <div className="flex-1 overflow-y-auto">
               {cart?.items && cart.items.length > 0 ? (
@@ -634,36 +852,79 @@ export const ProductPage = (): JSX.Element => {
                     />
                     <div className="flex-1 flex flex-col items-start text-left">
                       <div className="font-semibold text-base mb-2">{item.title}</div>
-                      <div className="text-sm text-gray-500 mb-1">Qty: {item.quantity}</div>
                       <div className="text-sm text-black font-bold">
-                        {typeof item.unit_price === 'number' ? `₽${item.unit_price.toFixed(2)}` : ''}
+                        {/* Ensure price is a number, and handle existing currency symbols */}
+                        {(() => {
+                          const price = item.unit_price;
+                          if (typeof price === 'number') return `₽${Math.trunc(price)}`;
+                          if (typeof price === 'string') {
+                            const numericPrice = parseFloat(price.replace(/[^\d.-]/g, ''));
+                            if (!isNaN(numericPrice)) return `₽${Math.trunc(numericPrice)}`;
+                          }
+                          return 'Цена не указана'; // Fallback
+                        })()}
                       </div>
                     </div>
                     <button
-                      className="ml-2 text-gray-400 hover:text-black text-xl mt-1"
+                      className="ml-2 text-gray-400 hover:text-black text-xl mt-1 p-1"
                       onClick={() => handleRemoveItem(item.id)}
-                      aria-label="Remove item"
+                      aria-label="Удалить товар"
                     >
-                      ×
+                      <X size={18} />
                     </button>
                   </div>
                 ))
               ) : (
-                <div className="text-xs text-gray-400 text-center mt-8">Your cart is empty.</div>
+                <div className="text-xs text-gray-400 text-center mt-8">Ваша корзина пуста.</div>
               )}
             </div>
             {/* Fixed Checkout button */}
             <div className="pt-4 pb-6 bg-white sticky bottom-0 left-0 right-0 z-10">
-              <button
-                className="w-full bg-black text-white py-3 font-bold uppercase tracking-wider text-xs rounded"
-                // onClick={...} // Add checkout logic here
+             {cart?.items && cart.items.length > 0 && (
+                <div className="flex justify-between items-center mb-3 px-1">
+                  <span className="text-lg">ИТОГО:</span>
+                  <span className="text-lg">
+                    {(() => {
+                      const totalValue = cart.total;
+                      let numericTotal = NaN;
+                      if (typeof totalValue === 'number') {
+                        numericTotal = totalValue;
+                      } else if (typeof totalValue === 'string') {
+                        numericTotal = parseFloat(totalValue.replace(/[^\d.-]/g, ''));
+                      }
+                      return !isNaN(numericTotal) ? `₽${Math.trunc(numericTotal)}` : 'N/A';
+                    })()}
+                  </span>
+                </div>
+              )}
+              <Link
+                to="/checkout"
+                onClick={() => setIsCartDrawerOpen(false)}
+                className={`w-full bg-black text-white py-3 font-bold uppercase tracking-wider text-xs rounded block text-center ${
+                  (!cart?.items || cart.items.length === 0) ? 'opacity-50 cursor-not-allowed' : ''
+                }`}
+                aria-disabled={!cart?.items || cart.items.length === 0}
+                // Prevent navigation if disabled
+                onClickCapture={(e) => {
+                  if (!cart?.items || cart.items.length === 0) {
+                    e.preventDefault();
+                  } else {
+                    setIsCartDrawerOpen(false);
+                  }
+                }}
               >
-                Checkout
-              </button>
+                ОФОРМИТЬ ЗАКАЗ
+              </Link>
             </div>
           </div>
         </div>
       </div>
+
+      {/* Size Chart Modal */}
+      <SizeChartModal 
+        isOpen={isSizeChartModalOpen} 
+        onClose={() => setIsSizeChartModalOpen(false)} 
+      />
     </div>
   );
-}; 
+};

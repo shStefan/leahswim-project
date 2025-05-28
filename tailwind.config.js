@@ -1,4 +1,6 @@
 /** @type {import('tailwindcss').Config} */
+import defaultTheme from 'tailwindcss/defaultTheme';
+
 export default {
   content: [
     "./index.html",
@@ -6,6 +8,11 @@ export default {
   ],
   theme: {
     extend: {
+      fontFamily: {
+        sans: ['Tektur', ...defaultTheme.fontFamily.sans],
+        bebas: ['Bebas Neue', 'cursive'], // Fallback to cursive
+        archivo: ['Archivo Narrow', 'sans-serif'], // Fallback to sans-serif
+      },
       colors: {
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
