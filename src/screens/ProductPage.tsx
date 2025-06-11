@@ -94,6 +94,7 @@ export const ProductPage = (): JSX.Element => {
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
   const [loadingRelated, setLoadingRelated] = useState<boolean>(false);
   const [isSizeChartModalOpen, setIsSizeChartModalOpen] = useState(false); // State for size chart modal
+  const [displayPrice, setDisplayPrice] = useState<string | null>(null);
 
   // Scroll to top on component mount
   useEffect(() => {
@@ -157,6 +158,14 @@ export const ProductPage = (): JSX.Element => {
       });
     }
   }, [productVariations, selectedColor, selectedSize, allColors]);
+
+  useEffect(() => {
+    if (currentVariation && currentVariation.price) {
+      setDisplayPrice(currentVariation.price);
+    } else if (product) {
+      setDisplayPrice(product.price);
+    }
+  }, [currentVariation, product]);
 
   // Updated to use removeFromCart from context
   const handleRemoveItem = async (itemId: string): Promise<void> => {
@@ -496,10 +505,10 @@ export const ProductPage = (): JSX.Element => {
       'fantasie sunset': '#FF7F50',
       'fantasie black and white': '#000000',
       'meow blue': '#1E90FF',
-      'infinity': '#4B0082',
-      'fantasy': '#F8F8FF',
-      'anchor': '#2B2B2B',
-      'swim': '#00BFFF',
+      'infinity': '#639BB9',
+      'fantasy': '#B12D31',
+      'anchor': '#F7A98C',
+      'swim': '#98DCC2',
       'biscay green': '#1B4D3E',
       'sakura': '#FFB7C5',
       'peacock blue': '#004D98',
@@ -520,37 +529,55 @@ export const ProductPage = (): JSX.Element => {
       'gray': '#808080',
       'orange': '#FFA500',
       'purple': '#800080',
-      'pink': '#FFC0CB',
+      'pink': '#F6A7E5',
       'yellow': '#FFFF00',
-      'green': '#008000',
-      'blue': '#0000FF',
+      'green': '#25CD96',
+      'blue': '#42B1EA',
       'red': '#FF0000',
       'white': '#FFFFFF',
       'black': '#000000',
-      // Added new mappings based on console logs and common interpretations
-      'natural': '#F0E68C',       // Khaki
-      'коралл': '#FF7F50',        // Coral (standard Russian)
-      'фиолетовый': '#800080',    // Purple (standard Russian)
-      'чёрный': '#000000',         // Black (standard Russian)
-      'коралл черный': '#4A4A4A', // Dark Grey / Blackish Coral
-      'avorio mocaccino': '#F5F5DC',// Beige / Ivory Moccachino
-      'jelly bean': '#DA2C43',      // Jelly Bean Red
-      'lilac': '#C8A2C8',         // Lilac
-      'sicilia': '#F28C28',        // Sicilian Orange
+      'natural': '#F0E68C',
+      'коралл': '#C9313E',
+      'фиолетовый': '#800080',
+      'чёрный': '#000000',
+      'коралл черный': '#4A4A4A',
+      'avorio mocaccino': '#27CE5E',
+      'jelly bean': '#05936C',
+      'lilac': '#C8A2C8',
+      'sicilia': '#E3DA73',
+      'infiniti caribi': '#0CB7E7',
+      'babydoll': '#B1E2C3',
+      'nero redcoat': '#9B2633',
+      'anchor clie': '#FDB6B3',
+      'tie die lime': '#D9D56A',
+      'paisley light blue': '#6CC6F1',
+      'paisley light blue / pink': '#3E82E0',
+      'tie die lime blue': '#EFEC99',
+      'swim / babydoll': '#7AD5A1',
+      'new blue irlandia': '#3CC181',
+      'fantasy sunset фиолетовый': '#EFCCE1',
+      'lime': '#ADC251',
+      'tie-dye lime lime': '#ADC251',
+      'illusion / peakock blue': '#02ADB7',
+      'голубой': '#D4EDF9',
+      'honey': '#DFBD77',
+      'цитрин - аметист': '#A76FC5',
+      'цитрин - гранат': '#9D0F30',
+      'бирюза': '#81C8D3',
+      'leah ropes': '#045AAE',
+      'ocean life': '#F87624',
     };
-
-    // Try to find an exact match first
-    const exactMatch = colorMap[colorName.toLowerCase()];
-    if (exactMatch) return exactMatch;
-
-    // Try to find a partial match
-    const partialMatch = Object.entries(colorMap).find(([key]) => 
-      colorName.toLowerCase().includes(key)
+    const lowerColorName = colorName.toLowerCase();
+    if (colorMap[lowerColorName]) {
+      return colorMap[lowerColorName];
+    }
+    const partialMatch = Object.entries(colorMap).find(([key]) =>
+      lowerColorName.includes(key)
     );
-    if (partialMatch) return partialMatch[1];
-
-    // If no match found, return a default color
-    return '#CCCCCC';
+    if (partialMatch) {
+      return partialMatch[1];
+    }
+    return '#CCCCCC'; // Default color if no match
   };
 
   if (loading) {
@@ -586,7 +613,7 @@ export const ProductPage = (): JSX.Element => {
 
   return (
     <div className="min-h-screen bg-white">
-      <div className="w-full flex flex-col md:flex-row mt-0 md:mt-20 md:gap-12 md:px-[30px] md:max-w-7xl md:mx-auto">
+      <div className="w-full flex flex-col md:flex-row mt-16 md:mt-20 md:gap-12 md:px-[30px] md:max-w-7xl md:mx-auto">
         {/* Left side - Media gallery */}
         <div className="w-full md:w-2/3 flex relative">
           <div className="hidden md:flex flex-col gap-2 p-4">
@@ -605,7 +632,7 @@ export const ProductPage = (): JSX.Element => {
                     <img 
                       src={item.thumbnail} 
                       alt="Video thumbnail" 
-                      className="w-full h-full object-cover"
+                      className="w-full h-full object-contain"
                       loading="lazy"
                     />
                     <div className="absolute inset-0 flex items-center justify-center bg-black bg-opacity-30">
@@ -616,7 +643,7 @@ export const ProductPage = (): JSX.Element => {
                   <img 
                     src={item.url} 
                     alt={`Thumbnail ${index + 1}`} 
-                    className="w-full h-full object-cover" 
+                    className="w-full h-full object-contain" 
                     loading="lazy"
                   />
                 )}
@@ -626,24 +653,25 @@ export const ProductPage = (): JSX.Element => {
           <div className="flex-1 relative">
             {mediaItems.length > 0 ? (
               mediaItems[currentMediaIndex].type === 'video' ? (
-              <div className="relative w-full h-full">
+              <div className="w-full aspect-[9/16]">
                 <video
                   src={mediaItems[currentMediaIndex].url}
-                  className="w-full h-[800px] object-cover"
+                  className="w-full h-full object-cover"
                   autoPlay
                   loop
                   muted
                   playsInline
-                  controls={true}
                 />
               </div>
             ) : (
-              <img 
-                src={mediaItems[currentMediaIndex].url}
-                alt="Main product" 
-                className="w-full h-[800px] object-cover"
+              <div className="w-full h-full flex items-start justify-center">
+                <img 
+                  src={mediaItems[currentMediaIndex].url}
+                  alt="Main product" 
+                  className="max-w-full max-h-[80vh] object-contain"
                   loading="eager"
-              />
+                />
+              </div>
               )
             ) : (
               <div className="w-full h-[800px] bg-gray-100 flex items-center justify-center">
@@ -696,7 +724,7 @@ export const ProductPage = (): JSX.Element => {
           </div>
 
           <p className="font-sans mt-2 text-lg">
-            {product.price ? `₽${product.price}` : 'Price not available'}
+            {displayPrice ? `₽${displayPrice}` : 'Price not available'}
           </p>
 
           {/* Color selector */}
@@ -799,9 +827,27 @@ export const ProductPage = (): JSX.Element => {
                         'Описание товара отсутствует.'
                       )
                     ) : section.contentKey === 'delivery' ? (
-                      'Information about delivery.' // Placeholder
+                      <div>
+                        <p>Доставка в пределах МКАД – 500 руб</p>
+                        <p>Доставка не более 20 км от МКАД – 1000 руб</p>
+                        <p>Доставка более 20 км от МКАД – 1500₽</p>
+                        <br/>
+                        <p>Стоимость международной доставки рассчитывается индивидуально при оформлении заказа. Для расчета стоимости международной доставки, пожалуйста, свяжитесь с нами:</p>
+                        <br/>
+                        <p>По телефону: +7 985 700 01 31</p>
+                        <p>По почте: info@leahcation.ru</p>
+                      </div>
                     ) : section.contentKey === 'returns' ? (
-                      'Information about returns.' // Placeholder
+                      <div>
+                        <p>Товар должен быть новым, товарный вид полностью сохранен, товар не был использован, отсутствуют признаки деформации и механические повреждения, отсутствуют пятна, затяжки, посторонние запахи; Все вшитые ярлыки, этикетки, пломбы на товаре сохранены и не повреждены, присутствует оригинальная упаковка, а также чеки, подтверждающие покупку. На товары из серебра, украшения и ювелирные изделия, возврат не предусмотрен.</p>
+                        <br/>
+                        <p>Для оформления возврата, пожалуйста, свяжитесь с нами:</p>
+                        <br/>
+                        <p>По телефону: +7 926 879-28-78</p>
+                        <p>По почте: info@leahswim.com</p>
+                        <br/>
+                        <p>В соответствии с Законом о защите прав потребителей No2300-1 от 1992 г. (далее ЗоЗПП), купальники возврату или обмену не подлежат.</p>
+                      </div>
                     ) : (
                       'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.'
                     )}

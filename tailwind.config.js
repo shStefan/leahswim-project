@@ -9,7 +9,7 @@ export default {
   theme: {
     extend: {
       fontFamily: {
-        sans: ['Tektur', ...defaultTheme.fontFamily.sans],
+        sans: ['Inter', ...defaultTheme.fontFamily.sans],
         bebas: ['Bebas Neue', 'cursive'], // Fallback to cursive
         archivo: ['Archivo Narrow', 'sans-serif'], // Fallback to sans-serif
       },
@@ -47,6 +47,7 @@ export default {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        'button-color': '#427173',
       },
       borderRadius: {
         lg: "var(--radius)",
