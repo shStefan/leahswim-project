@@ -352,7 +352,7 @@ const CheckoutPage: React.FC = () => {
                 >
                   {deliveryOptions.map(option => (
                     <option key={option.id} value={option.id}>
-                      {option.label} - {option.cost === 0 ? t('checkout.free') : `€${Math.round(option.cost / 92)}`}
+                      {option.label}
                     </option>
                   ))}
                 </select>
