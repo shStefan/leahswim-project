@@ -7,6 +7,12 @@ import { useLikes } from '../context/LikesContext';
 import { ProductPageSkeleton } from '../components/ProductPageSkeleton';
 import { RelatedProductsSlider } from '../components/RelatedProductsSlider';
 import SizeChartModal from '../components/SizeChartModal'; // Import the modal
+import { DynamicText } from '../components/DynamicText';
+import { useTranslation } from '../context/TranslationContext';
+import { convertAndFormatPrice } from '../utils/priceUtils';
+import { LoadingWrapper } from '../components/LoadingWrapper';
+import { TranslatedHTML } from '../components/TranslatedHTML';
+import { apiEndpoints } from '../utils/apiConfig';
 
 interface MediaItem {
   type: 'image' | 'video';
@@ -48,10 +54,6 @@ interface ProductVariation {
   // Add other variation-specific fields if needed
 }
 
-// WooCommerce API credentials
-const WC_CONSUMER_KEY = 'ck_c2758a311f98c4c5a4e44b85a5a66eae4a0581c3';
-const WC_CONSUMER_SECRET = 'cs_7b0d34c68e68a5ae5cebf19a6d23338ab83de571';
-const WC_API_URL = 'https://zdqksnii.elementor.cloud/wp-json/wc/v3';
 
 export const ProductPage = (): JSX.Element => {
   const { id: idFromParams } = useParams<{ id:string }>();
@@ -92,6 +94,7 @@ export const ProductPage = (): JSX.Element => {
   const { likedProducts, toggleLike } = useLikes();
   const [productVariations, setProductVariations] = useState<ProductVariation[]>([]);
   const [relatedProducts, setRelatedProducts] = useState<Product[]>([]);
+  const { t } = useTranslation();
   const [loadingRelated, setLoadingRelated] = useState<boolean>(false);
   const [isSizeChartModalOpen, setIsSizeChartModalOpen] = useState(false); // State for size chart modal
   const [displayPrice, setDisplayPrice] = useState<string | null>(null);
@@ -215,17 +218,12 @@ export const ProductPage = (): JSX.Element => {
 
       try {
         // Define fetch promises
-        const productPromise = fetch(`${WC_API_URL}/products/${currentProductId}`, {
-          headers: {
-            'Authorization': 'Basic ' + btoa(WC_CONSUMER_KEY + ':' + WC_CONSUMER_SECRET)
-          }
-        });
+        const productFields = 'id,name,price,regular_price,sale_price,images,attributes,categories,type,status';
+        const { url: productUrl, options: productOptions } = apiEndpoints.products(`include=${currentProductId}&_fields=${productFields}`);
+        const productPromise = fetch(productUrl, productOptions);
 
-        const variationsPromise = fetch(`${WC_API_URL}/products/${currentProductId}/variations?per_page=100`, {
-          headers: {
-            'Authorization': 'Basic ' + btoa(WC_CONSUMER_KEY + ':' + WC_CONSUMER_SECRET)
-          }
-        });
+        const { url: variationsUrl, options: variationsOptions } = apiEndpoints.variations(currentProductId, 'per_page=100&_fields=id,price,regular_price,sale_price,attributes,image,status,description,variation_gallery');
+        const variationsPromise = fetch(variationsUrl, variationsOptions);
 
         // Await both promises in parallel
         const [productResponse, variationsResponse] = await Promise.all([
@@ -236,7 +234,13 @@ export const ProductPage = (): JSX.Element => {
         if (!productResponse.ok) {
           throw new Error(`Failed to fetch product: ${productResponse.status} ${await productResponse.text()}`);
         }
-        const productData: Product = await productResponse.json();
+        const productDataArray: Product[] = await productResponse.json();
+        const productData: Product = productDataArray[0]; // Extract the first product from the array (include returns array)
+        
+        if (!productData) {
+          throw new Error('Product not found in API response');
+        }
+        
         setProduct(productData);
         console.log('Fetched product data:', productData); // Log the entire product data
 
@@ -303,11 +307,8 @@ export const ProductPage = (): JSX.Element => {
       if (firstCategoryId) {
         setLoadingRelated(true);
         console.log(`Fetching related products for category ID: ${firstCategoryId}, excluding product ID: ${product.id}`); 
-        fetch(`${WC_API_URL}/products?category=${firstCategoryId}&per_page=10&exclude=${product.id}`, { // Exclude current product
-          headers: {
-            'Authorization': 'Basic ' + btoa(WC_CONSUMER_KEY + ':' + WC_CONSUMER_SECRET)
-          }
-        })
+        const { url: relatedUrl, options: relatedOptions } = apiEndpoints.products(`category=${firstCategoryId}&per_page=10&exclude=${product.id}`);
+        fetch(relatedUrl, relatedOptions)
         .then(res => res.json())
         .then((data: Product[]) => { // Ensure type is Product[]
           console.log('[ProductPage] Fetched related products raw data:', data);
@@ -356,9 +357,19 @@ export const ProductPage = (): JSX.Element => {
   const mediaItems: MediaItem[] = useMemo(() => {
     const items: MediaItem[] = [];
     const addedUrls = new Set<string>(); // To prevent duplicate media by URL
+    let videoItem: MediaItem | null = null; // Store video separately to add it first at the end
 
     if (currentVariation) {
-      // 1. Variation-specific gallery (if available)
+      // 1. Selected variation's main image (add first so it appears first when no video)
+      if (currentVariation.image?.src) {
+        const imageUrl = currentVariation.image.src;
+        if (!addedUrls.has(imageUrl)) {
+          items.push({ type: 'image', url: imageUrl });
+          addedUrls.add(imageUrl);
+        }
+      }
+
+      // 2. Variation-specific gallery (if available)
       if (currentVariation.variation_gallery && currentVariation.variation_gallery.urls && currentVariation.variation_gallery.urls.length > 0) {
         currentVariation.variation_gallery.urls.forEach(url => {
           if (url && !addedUrls.has(url)) {
@@ -368,7 +379,7 @@ export const ProductPage = (): JSX.Element => {
         });
       }
 
-      // 2. Video from selected variation's description (if not already covered by gallery logic)
+      // 3. Video from selected variation's description (store to add at beginning)
       if (currentVariation.description && typeof currentVariation.description === 'string') {
         const videoMatch = currentVariation.description.match(/<video.*?src=["'](.*?)["']/i);
         if (videoMatch && videoMatch[1]) {
@@ -378,23 +389,14 @@ export const ProductPage = (): JSX.Element => {
             // Try to use variation image as poster, only if it's not the video itself
             const actualPoster = (posterUrl && posterUrl !== videoUrl && !addedUrls.has(posterUrl)) ? posterUrl : undefined;
             
-            items.unshift({ // Add video to the beginning if found
+            videoItem = {
               type: 'video', 
               url: videoUrl, 
               thumbnail: actualPoster
-            });
+            };
             addedUrls.add(videoUrl);
             if (actualPoster) addedUrls.add(actualPoster);
           }
-        }
-      }
-
-      // 3. Selected variation's main image (if not already added)
-      if (currentVariation.image?.src) { // Check currentVariation.image first
-        const imageUrl = currentVariation.image.src;
-        if (!addedUrls.has(imageUrl)) {
-          items.push({ type: 'image', url: imageUrl });
-          addedUrls.add(imageUrl);
         }
       }
     } else if (mainImage && mainImage !== '/placeholder.png') {
@@ -406,14 +408,21 @@ export const ProductPage = (): JSX.Element => {
       }
     }
 
+    // If video exists, add it to the beginning
+    if (videoItem) {
+      items.unshift(videoItem);
+    }
+
     // 4. Add images from the parent product's gallery (`product.images`)
-    // This acts as a fallback or supplement if variation-specific media is limited.
-    product?.images?.forEach(img => {
-      if (img.src && !addedUrls.has(img.src)) {
-        items.push({ type: 'image', url: img.src });
-        addedUrls.add(img.src);
-      }
-    });
+    // This acts as a fallback ONLY when we have no variation-specific media
+    if (items.length === 0 && product?.images) {
+      product.images.forEach(img => {
+        if (img.src && !addedUrls.has(img.src)) {
+          items.push({ type: 'image', url: img.src });
+          addedUrls.add(img.src);
+        }
+      });
+    }
     
     // If after all this, no media items, add a default placeholder
     if (items.length === 0) {
@@ -458,7 +467,7 @@ export const ProductPage = (): JSX.Element => {
     } else {
       // It's a variable product but no specific variation selected (e.g. if size not chosen yet)
       // Optionally, prevent adding to cart or add default variation if applicable
-      alert("Пожалуйста, выберите все опции товара (например, размер).");
+                    alert(t('common.pleaseSelectOptions'));
       return;
     }
 
@@ -581,7 +590,11 @@ export const ProductPage = (): JSX.Element => {
   };
 
   if (loading) {
-    return <ProductPageSkeleton />;
+    return (
+      <LoadingWrapper isContentLoading={true} showSkeleton={true}>
+        <div></div>
+      </LoadingWrapper>
+    );
   }
 
   if (error) {
@@ -612,7 +625,8 @@ export const ProductPage = (): JSX.Element => {
   )?.options || [];
 
   return (
-    <div className="min-h-screen bg-white">
+    <LoadingWrapper isContentLoading={false} showSkeleton={false}>
+      <div className="min-h-screen bg-white">
       <div className="w-full flex flex-col md:flex-row mt-16 md:mt-20 md:gap-12 md:px-[30px] md:max-w-7xl md:mx-auto">
         {/* Left side - Media gallery */}
         <div className="w-full md:w-2/3 flex relative">
@@ -711,7 +725,11 @@ export const ProductPage = (): JSX.Element => {
         {/* Right side - Product info */}
         <div className="w-full md:w-1/3 p-6 md:p-8">
           <div className="flex justify-between items-start">
-            <h1 className="font-sans text-2xl">{product.name}</h1>
+            <DynamicText 
+              text={product.name}
+              tag="h1"
+              className="font-sans text-2xl"
+            />
             <button
               className="ml-2 p-1 text-black hover:text-black"
               aria-label="Like"
@@ -724,13 +742,13 @@ export const ProductPage = (): JSX.Element => {
           </div>
 
           <p className="font-sans mt-2 text-lg">
-            {displayPrice ? `₽${displayPrice}` : 'Price not available'}
+                            {displayPrice ? convertAndFormatPrice(displayPrice) : 'Price not available'}
           </p>
 
           {/* Color selector */}
           {allColors && allColors.length > 0 && (
             <div className="mt-8">
-              <p className="font-sans mb-2">Выберите цвет</p>
+                              <p className="font-sans mb-2">{t('common.selectColor')}</p>
               <div className="flex items-center space-x-2 mt-4">
                 {(allColors || []).map((color) => (
                   <button
@@ -754,14 +772,14 @@ export const ProductPage = (): JSX.Element => {
                 ))}
               </div>
               {selectedColor && (
-                <div className="mt-2 text-sm text-gray-600">Выбранный цвет: <span className="font-semibold">{selectedColor}</span></div>
+                <div className="mt-2 text-sm text-gray-600">{t('common.selectedColor')}: <span className="font-semibold">{selectedColor}</span></div>
               )}
             </div>
           )}
 
           {/* Size selector */}
           <div className="mt-8">
-            <p className="font-sans mb-2">Выберите размер</p>
+                            <p className="font-sans mb-2">{t('common.selectSize')}</p>
             <div className="flex flex-wrap gap-2">
               {allSizes.map((size: string) => (
                 <button
@@ -778,13 +796,13 @@ export const ProductPage = (): JSX.Element => {
               ))}
             </div>
             {selectedSize && (
-              <div className="mt-2 text-sm text-gray-600">Выбранный размер: <span className="font-semibold">{selectedSize}</span></div>
+                              <div className="mt-2 text-sm text-gray-600">{t('common.selectedSize')}: <span className="font-semibold">{selectedSize}</span></div>
             )}
             <button 
               className="mt-2 text-sm underline"
               onClick={() => setIsSizeChartModalOpen(true)}
             >
-              Размерная сетка
+                              {t('footer.sizeChart')}
             </button>
           </div>
 
@@ -794,15 +812,15 @@ export const ProductPage = (): JSX.Element => {
             disabled={cartLoading || (allColors && allColors.length > 0 ? (!selectedSize || !selectedColor) : !selectedSize)}
             onClick={handleAddToCart}
           >
-            {cartLoading ? 'ДОБАВЛЕНИЕ...' : 'В КОРЗИНУ'}
+            {cartLoading ? t('product.adding') : t('product.addToCart')}
           </Button>
 
           {/* Expandable sections */}
           <div className="mt-8 space-y-4">
             {[ 
-              { title: 'Параметры изделия', contentKey: 'description' },
-              { title: 'Доставка', contentKey: 'delivery' },
-              { title: 'Возврат', contentKey: 'returns' }
+              { title: t('product.parameters'), contentKey: 'description' },
+              { title: t('product.delivery'), contentKey: 'delivery' },
+              { title: t('product.returns'), contentKey: 'returns' }
             ].map((section) => (
               <div key={section.title} className="border-t border-gray-200">
                 <button
@@ -820,33 +838,33 @@ export const ProductPage = (): JSX.Element => {
                   <div className="font-sans pb-4">
                     {section.contentKey === 'description' ? (
                       product.short_description ? (
-                        <div dangerouslySetInnerHTML={{ __html: product.short_description }} />
+                        <TranslatedHTML htmlContent={product.short_description} />
                       ) : product.description ? (
-                        <div dangerouslySetInnerHTML={{ __html: product.description }} />
+                        <TranslatedHTML htmlContent={product.description} />
                       ) : (
-                        'Описание товара отсутствует.'
+                        t('product.noDescription')
                       )
                     ) : section.contentKey === 'delivery' ? (
                       <div>
-                        <p>Доставка в пределах МКАД – 500 руб</p>
-                        <p>Доставка не более 20 км от МКАД – 1000 руб</p>
-                        <p>Доставка более 20 км от МКАД – 1500₽</p>
+                        <p>{t('delivery.withinMKAD')}</p>
+                        <p>{t('delivery.outsideMKAD20')}</p>
+                        <p>{t('delivery.outsideMKADOver20')}</p>
                         <br/>
-                        <p>Стоимость международной доставки рассчитывается индивидуально при оформлении заказа. Для расчета стоимости международной доставки, пожалуйста, свяжитесь с нами:</p>
+                        <p>{t('delivery.international')}</p>
                         <br/>
-                        <p>По телефону: +7 985 700 01 31</p>
-                        <p>По почте: info@leahcation.ru</p>
+                        <p>{t('delivery.byPhone')}</p>
+                        <p>{t('delivery.byEmail')}</p>
                       </div>
                     ) : section.contentKey === 'returns' ? (
                       <div>
-                        <p>Товар должен быть новым, товарный вид полностью сохранен, товар не был использован, отсутствуют признаки деформации и механические повреждения, отсутствуют пятна, затяжки, посторонние запахи; Все вшитые ярлыки, этикетки, пломбы на товаре сохранены и не повреждены, присутствует оригинальная упаковка, а также чеки, подтверждающие покупку. На товары из серебра, украшения и ювелирные изделия, возврат не предусмотрен.</p>
+                        <p>{t('returns.conditions')}</p>
                         <br/>
-                        <p>Для оформления возврата, пожалуйста, свяжитесь с нами:</p>
+                        <p>{t('returns.toArrange')}</p>
                         <br/>
-                        <p>По телефону: +7 926 879-28-78</p>
-                        <p>По почте: info@leahswim.com</p>
+                        <p>{t('returns.byPhone')}</p>
+                        <p>{t('returns.byEmail')}</p>
                         <br/>
-                        <p>В соответствии с Законом о защите прав потребителей No2300-1 от 1992 г. (далее ЗоЗПП), купальники возврату или обмену не подлежат.</p>
+                        <p>{t('returns.law')}</p>
                       </div>
                     ) : (
                       'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.'
@@ -861,109 +879,7 @@ export const ProductPage = (): JSX.Element => {
 
       {/* Wrapper for Related Products Slider to align with page content */}
       <div className="w-full md:max-w-7xl md:mx-auto md:px-[30px] mb-8">
-        <RelatedProductsSlider products={relatedProducts} loading={loadingRelated} title="Вам также может понравиться" />
-      </div>
-
-      {/* Cart Drawer (right side) */}
-      <div>
-        {/* Overlay - same as likes card */}
-        <div
-          className={`fixed inset-0 bg-black bg-opacity-50 transition-opacity duration-300 z-40 ${isCartDrawerOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
-          onClick={() => setIsCartDrawerOpen(false)}
-          aria-hidden={!isCartDrawerOpen}
-        />
-        {/* Drawer - same as likes card */}
-        <div
-          className={`fixed top-8 right-8 max-w-[400px] w-[90vw] max-h-[80vh] bg-white border border-gray-100 rounded-2xl shadow-2xl z-50 transition-opacity duration-300
-            ${isCartDrawerOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
-          aria-hidden={!isCartDrawerOpen}
-        >
-          <div className="flex justify-end p-2">
-            <button onClick={() => setIsCartDrawerOpen(false)} className="text-black hover:text-gray-600 text-lg">
-              <X size={20} />
-            </button>
-          </div>
-          {/* Cart content */}
-          <div className="px-4 pb-0 flex flex-col h-full">
-            <span className="text-base font-bold uppercase mb-2">КОРЗИНА</span>
-            <div className="w-full h-px bg-gray-200 mb-2" />
-            <div className="flex-1 overflow-y-auto">
-              {cart?.items && cart.items.length > 0 ? (
-                cart.items.map((item: any) => (
-                  <div key={item.id} className="flex py-4 border-b border-gray-100 last:border-b-0 items-start">
-                    <img
-                      src={item.thumbnail || '/placeholder.png'}
-                      alt={item.title}
-                      className="w-20 h-20 object-cover rounded border mr-4"
-                    />
-                    <div className="flex-1 flex flex-col items-start text-left">
-                      <div className="font-semibold text-base mb-2">{item.title}</div>
-                      <div className="text-sm text-black font-bold">
-                        {/* Ensure price is a number, and handle existing currency symbols */}
-                        {(() => {
-                          const price = item.unit_price;
-                          if (typeof price === 'number') return `₽${Math.trunc(price)}`;
-                          if (typeof price === 'string') {
-                            const numericPrice = parseFloat(price.replace(/[^\d.-]/g, ''));
-                            if (!isNaN(numericPrice)) return `₽${Math.trunc(numericPrice)}`;
-                          }
-                          return 'Цена не указана'; // Fallback
-                        })()}
-                      </div>
-                    </div>
-                    <button
-                      className="ml-2 text-gray-400 hover:text-black text-xl mt-1 p-1"
-                      onClick={() => handleRemoveItem(item.id)}
-                      aria-label="Удалить товар"
-                    >
-                      <X size={18} />
-                    </button>
-                  </div>
-                ))
-              ) : (
-                <div className="text-xs text-gray-400 text-center mt-8">Ваша корзина пуста.</div>
-              )}
-            </div>
-            {/* Fixed Checkout button */}
-            <div className="pt-4 pb-6 bg-white sticky bottom-0 left-0 right-0 z-10">
-             {cart?.items && cart.items.length > 0 && (
-                <div className="flex justify-between items-center mb-3 px-1">
-                  <span className="text-lg">ИТОГО:</span>
-                  <span className="text-lg">
-                    {(() => {
-                      const totalValue = cart.total;
-                      let numericTotal = NaN;
-                      if (typeof totalValue === 'number') {
-                        numericTotal = totalValue;
-                      } else if (typeof totalValue === 'string') {
-                        numericTotal = parseFloat(totalValue.replace(/[^\d.-]/g, ''));
-                      }
-                      return !isNaN(numericTotal) ? `₽${Math.trunc(numericTotal)}` : 'N/A';
-                    })()}
-                  </span>
-                </div>
-              )}
-              <Link
-                to="/checkout"
-                onClick={() => setIsCartDrawerOpen(false)}
-                className={`w-full bg-black text-white py-3 font-bold uppercase tracking-wider text-xs rounded block text-center ${
-                  (!cart?.items || cart.items.length === 0) ? 'opacity-50 cursor-not-allowed' : ''
-                }`}
-                aria-disabled={!cart?.items || cart.items.length === 0}
-                // Prevent navigation if disabled
-                onClickCapture={(e) => {
-                  if (!cart?.items || cart.items.length === 0) {
-                    e.preventDefault();
-                  } else {
-                    setIsCartDrawerOpen(false);
-                  }
-                }}
-              >
-                ОФОРМИТЬ ЗАКАЗ
-              </Link>
-            </div>
-          </div>
-        </div>
+        <RelatedProductsSlider products={relatedProducts} loading={loadingRelated} title={t('related.title', 'You might also like')} />
       </div>
 
       {/* Size Chart Modal */}
@@ -972,5 +888,6 @@ export const ProductPage = (): JSX.Element => {
         onClose={() => setIsSizeChartModalOpen(false)} 
       />
     </div>
+    </LoadingWrapper>
   );
 };

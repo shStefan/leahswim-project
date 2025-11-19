@@ -3,6 +3,8 @@ import { Heart, ShoppingBag, Menu, X, ChevronDown, Filter as FilterIcon, Message
 import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { useLikes } from '../context/LikesContext';
 import { useCart } from '../context/CartContext';
+import { useTranslation } from '../context/TranslationContext';
+import { convertAndFormatPrice, parseCurrencyEUR } from '../utils/priceUtils';
 
 // Define types for navigation items
 interface NavSubItem {
@@ -17,35 +19,35 @@ interface NavItem {
   megaMenuColumns?: NavSubItem[][]; // For more complex dropdowns like Детская одежда
 }
 
-// Updated NavItems with exact percent-encoded paths
-const newNavItems: NavItem[] = [
+// Navigation items with translation keys
+const getNavItems = (t: (key: string) => string, language: string): NavItem[] => [
   {
-    title: 'Купальники',
-    path: '/category/%25d0%25ba%25d1%2583%25d0%25bf%25d0%25b0%25d0%25bb%25d1%258c%25d0%25bd%25d0%25b8%25d0%25ba%25d0%25b8-2',
+    title: t('nav.swimwear'),
+    path: `${language === 'en' ? '/en' : ''}/category/%25d0%25ba%25d1%2583%25d0%25bf%25d0%25b0%25d0%25bb%25d1%258c%25d0%25bd%25d0%25b8%25d0%25ba%25d0%25b8-2`,
   },
   {
-    title: 'Одежда',
-    path: '/category/%25d0%25be%25d0%25b4%25d0%25b5%25d0%25b6%25d0%25b4%25d0%25b0-2',
+    title: t('nav.clothing'),
+    path: `${language === 'en' ? '/en' : ''}/category/%25d0%25be%25d0%25b4%25d0%25b5%25d0%25b6%25d0%25b4%25d0%25b0-2`,
   },
   {
-    title: 'Спорт',
-    path: '/category/%25d1%2581%25d0%25bf%25d0%25be%25d1%2580%25d1%2582',
+    title: t('nav.sport'),
+    path: `${language === 'en' ? '/en' : ''}/category/%25d1%2581%25d0%25bf%25d0%25be%25d1%2580%25d1%2582`,
   },
   {
-    title: 'Plus size',
-    path: '/category/plus-size1',
+    title: t('nav.plussize'),
+    path: `${language === 'en' ? '/en' : ''}/category/plus-size1`,
   },
   {
-    title: 'Аксессуары',
-    path: '/category/%25d0%25b0%25d0%25ba%25d1%2581%25d0%25b5%25d1%2581%25d1%2581%25d1%2583%25d0%25b0%25d1%2580%25d1%258b',
+    title: t('nav.accessories'),
+    path: `${language === 'en' ? '/en' : ''}/category/%25d0%25b0%25d0%25ba%25d1%2581%25d0%25b5%25d1%2581%25d1%2581%25d1%2583%25d0%25b0%25d1%2580%25d1%258b`,
   },
   {
-    title: 'Базовая коллекция',
-    path: '/category/%25d0%25b1%25d0%25b0%25d0%25b7%25d0%25be%25d0%25b2%25d0%25b0%25d1%258f-%25d0%25ba%25d0%25be%25d0%25bb%25d0%25bb%25d0%25b5%25d0%25ba%25d1%2586%25d0%25b8%25d1%258f',
+    title: t('nav.basic'),
+    path: `${language === 'en' ? '/en' : ''}/category/%25d0%25b1%25d0%25b0%25d0%25b7%25d0%25be%25d0%25b2%25d0%25b0%25d1%258f-%25d0%25ba%25d0%25be%25d0%25bb%25d0%25bb%25d0%25b5%25d0%25ba%25d1%2586%25d0%25b8%25d1%258f`,
   },
   {
-    title: 'Детская одежда',
-    path: '/category/%25d0%25b4%25d0%25b5%25d1%2582%25d1%2581%25d0%25ba%25d0%25b0%25d1%258f-%25d0%25be%25d0%25b4%25d0%25b5%25d0%25b6%25d0%25b4%25d0%25b0',
+    title: t('nav.kids'),
+    path: `${language === 'en' ? '/en' : ''}/category/%25d0%25b4%25d0%25b5%25d1%2582%25d1%2581%25d0%25ba%25d0%25b0%25d1%258f-%25d0%25be%25d0%25b4%25d0%25b5%25d0%25b6%25d0%25b4%25d0%25b0`,
   },
 ];
 
@@ -54,8 +56,12 @@ const Header = () => {
   const [isLikesMenuOpen, setIsLikesMenuOpen] = useState(false);
   const { likedProducts, likedProductsCache, toggleLike } = useLikes();
   const { cart, removeFromCart, isCartDrawerOpen, setIsCartDrawerOpen } = useCart();
+  const { t, language } = useTranslation();
   const navigate = useNavigate();
   const [isScrolled, setIsScrolled] = useState(false);
+  
+  // Get navigation items with current language
+  const navItems = getNavItems(t, language);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
   const dropdownRef = useRef<HTMLDivElement>(null); // For click outside
   const [openMobileSubmenu, setOpenMobileSubmenu] = useState<string | null>(null); // For mobile accordion
@@ -67,6 +73,103 @@ const Header = () => {
   console.log('[Header Render] Cart items count:', cart?.items?.length, 'Cart Total:', cart?.total);
 
   const cartCount = cart?.items?.reduce((sum: number, item: any) => sum + item.quantity, 0) || 0;
+
+  // Utility to parse price strings like "€20" safely
+  const parseNumeric = (val: any): number => {
+    if (typeof val === 'number') return val;
+    if (typeof val === 'string') {
+      return parseCurrencyEUR(val);
+    }
+    return 0;
+  };
+
+  // Calculate original (pre-discount) total to show discount line
+  const originalSubtotal = cart?.items?.reduce((sum: number, item: any) => sum + parseNumeric(item.unit_price) * item.quantity, 0) || 0;
+
+  const discountedTotalNumeric = (() => {
+    if (!cart?.total) return 0;
+    return parseNumeric(cart.total);
+  })();
+
+  const discountAmount = Math.max(originalSubtotal - discountedTotalNumeric, 0);
+
+  // Build per-item discount map
+  const discountMap = (() => {
+    const unitArr: {price: number; itemId: string}[] = [];
+    cart?.items.forEach((item) => {
+      const priceNum = parseNumeric(item.unit_price);
+      for (let i = 0; i < item.quantity; i++) {
+        unitArr.push({price: priceNum, itemId: item.id});
+      }
+    });
+
+    // Sort copies to decide discount distribution
+    const desc = [...unitArr].sort((a, b) => b.price - a.price);
+    const asc = [...unitArr].sort((a, b) => a.price - b.price);
+
+    const usedIndices = new Set<number>();
+    const discountPerUnit: number[] = new Array(unitArr.length).fill(0);
+
+    const findIndexNotUsed = (arr: {price:number;itemId:string}[], fromStart: boolean): number => {
+      if (fromStart) {
+        for (let i = 0; i < arr.length; i++) {
+          const idx = unitArr.indexOf(arr[i]);
+          if (!usedIndices.has(idx)) return idx;
+        }
+      } else {
+        for (let i = 0; i < arr.length; i++) {
+          const idx = unitArr.indexOf(arr[i]);
+          if (!usedIndices.has(idx)) return idx;
+        }
+      }
+      return -1;
+    };
+
+    // 10% off two most expensive units
+    if (unitArr.length >= 2) {
+      let count = 0;
+      for (let i = 0; i < desc.length && count < 2; i++) {
+        const idx = unitArr.indexOf(desc[i]);
+        if (!usedIndices.has(idx)) {
+          discountPerUnit[idx] = desc[i].price * 0.1;
+          usedIndices.add(idx);
+          count++;
+        }
+      }
+    }
+
+    // Cheapest free
+    if (unitArr.length >= 3) {
+      for (let i = 0; i < asc.length; i++) {
+        const idx = unitArr.indexOf(asc[i]);
+        if (!usedIndices.has(idx)) {
+          discountPerUnit[idx] = asc[i].price; // 100% off
+          usedIndices.add(idx);
+          break;
+        }
+      }
+    }
+
+    // 15% off second cheapest (i.e., cheapest remaining after free item)
+    if (unitArr.length >= 4) {
+      for (let i = 0; i < asc.length; i++) {
+        const idx = unitArr.indexOf(asc[i]);
+        if (!usedIndices.has(idx)) {
+          discountPerUnit[idx] = asc[i].price * 0.15;
+          usedIndices.add(idx);
+          break;
+        }
+      }
+    }
+
+    // Aggregate per itemId
+    const map: Record<string, number> = {};
+    unitArr.forEach((unit, idx) => {
+      if (!map[unit.itemId]) map[unit.itemId] = 0;
+      map[unit.itemId] += discountPerUnit[idx] || 0;
+    });
+    return map;
+  })();
 
   useEffect(() => {
     const handleScroll = () => {
@@ -138,6 +241,13 @@ const Header = () => {
     <header 
       className={`${headerBaseClasses} ${headerDynamicClasses}`}
     >
+              {/* Notification bar - only show on Russian pages */}
+        {language === 'ru' && (
+          <div className="w-full bg-[#99D6E9] text-black text-xs text-center py-1">
+            {t('common.vpnMessage')}
+          </div>
+        )}
+
       <div className="w-full px-4 sm:px-6 lg:px-8 md:px-[45px]">
         <div className="flex justify-between items-center h-16 relative">
           {/* Mobile menu button */}
@@ -161,7 +271,7 @@ const Header = () => {
 
           {/* Desktop Navigation with Dropdowns */}
           <nav className="hidden md:flex space-x-1 items-center">
-            {newNavItems.map((item) => (
+            {navItems.map((item) => (
               <div 
                 key={item.title} 
                 className="relative group"
@@ -286,7 +396,7 @@ const Header = () => {
         </div>
         <nav className="flex flex-col h-[calc(100%-64px)] p-4">
           <div className="flex-grow overflow-y-auto">
-            {newNavItems.map((item) => (
+            {navItems.map((item) => (
               <div key={item.title} className="flex flex-col">
                 <button
                   onClick={() => {
@@ -364,9 +474,9 @@ const Header = () => {
           </div>
           <div className="mt-auto pt-4">
             <hr className="my-2 border-gray-200" />
-            <Link to="/" className="block py-2 px-3 text-black hover:bg-gray-100 rounded-md" onClick={() => setIsMenuOpen(false)}>Главная</Link>
-            <Link to="/about" className="block py-2 px-3 text-black hover:bg-gray-100 rounded-md" onClick={() => setIsMenuOpen(false)}>О нас</Link>
-            <Link to="/contact" className="block py-2 px-3 text-black hover:bg-gray-100 rounded-md" onClick={() => setIsMenuOpen(false)}>Контакты</Link>
+            <Link to={`${language === 'en' ? '/en' : ''}/`} className="block py-2 px-3 text-black hover:bg-gray-100 rounded-md" onClick={() => setIsMenuOpen(false)}>{t('nav.home')}</Link>
+            <Link to={`${language === 'en' ? '/en' : ''}/about`} className="block py-2 px-3 text-black hover:bg-gray-100 rounded-md" onClick={() => setIsMenuOpen(false)}>{t('nav.about')}</Link>
+            <Link to={`${language === 'en' ? '/en' : ''}/contact`} className="block py-2 px-3 text-black hover:bg-gray-100 rounded-md" onClick={() => setIsMenuOpen(false)}>{t('nav.contact')}</Link>
             
             <hr className="my-2 border-gray-200" />
             <div className="flex justify-around items-center py-2 px-3">
@@ -398,11 +508,11 @@ const Header = () => {
           </button>
         </div>
         <div className="px-4 pb-4 flex flex-col h-full">
-          <span className="text-base font-bold uppercase mb-2">ИЗБРАННОЕ</span>
+          <span className="text-base font-bold uppercase mb-2">{t('favorites.title')}</span>
           <div className="w-full h-px bg-gray-200 mb-2" />
           <div className="flex-1 overflow-y-auto flex flex-col">
             {likedProducts.length === 0 ? (
-              <div className="text-xs text-gray-400 text-center mt-8">Список избранного пуст.</div>
+              <div className="text-xs text-gray-400 text-center mt-8">{t('favorites.empty')}</div>
             ) : (
               likedProducts.map((id) => {
                 const product = likedProductsCache[id];
@@ -428,12 +538,9 @@ const Header = () => {
                       <span className="text-sm text-black font-bold">
                         {(() => {
                           const price = product.price;
-                          let displayPrice = 'Цена не указана';
+                          let displayPrice = 'Price not specified';
                           if (price !== undefined && price !== null) {
-                            const numericPrice = parseFloat(String(price).replace(/[^\d.-]/g, ''));
-                            if (!isNaN(numericPrice)) {
-                              displayPrice = `₽${numericPrice.toFixed(2)}`;
-                            }
+                            displayPrice = convertAndFormatPrice(price);
                           }
                           return displayPrice;
                         })()}
@@ -464,77 +571,82 @@ const Header = () => {
           </button>
         </div>
         <div className="px-4 pb-0 flex flex-col h-full">
-          <span className="text-base font-bold uppercase mb-2">КОРЗИНА</span>
+          <span className="text-base font-bold uppercase mb-2">{t('cart.title')}</span>
           <div className="w-full h-px bg-gray-200 mb-2" />
           <div className="flex-1 overflow-y-auto">
             {cart?.items && cart.items.length > 0 ? (
-              cart.items.map((item: any) => (
-                <div key={item.id} className="flex py-4 border-b border-gray-100 last:border-b-0 items-start">
-                  <img
-                    src={item.thumbnail || '/placeholder.png'}
-                    alt={item.title}
-                    className="w-20 h-20 object-cover rounded border mr-4"
-                  />
-                  <div className="flex-1 flex flex-col items-start text-left">
-                    <div className="font-semibold text-base mb-2">{item.title}</div>
-                    <div className="text-sm text-black font-bold">
-                      {(() => {
-                        const price = item.unit_price;
-                        if (typeof price === 'number') return `₽${price.toFixed(2)}`;
-                        if (typeof price === 'string') {
-                          const numericPrice = parseFloat(price.replace(/[^\d.-]/g, ''));
-                          if (!isNaN(numericPrice)) return `₽${numericPrice.toFixed(2)}`;
-                        }
-                        return 'Цена не указана';
-                      })()}
+              cart.items.map((item: any) => {
+                const priceNum = parseNumeric(item.unit_price);
+                const lineOriginal = priceNum * item.quantity;
+                const lineDiscount = discountMap[item.id] || 0;
+                const lineFinal = lineOriginal - lineDiscount;
+                return (
+                  <div key={item.id} className="flex py-4 border-b border-gray-100 last:border-b-0 items-start">
+                    <img
+                      src={item.thumbnail || '/placeholder.png'}
+                      alt={item.title}
+                      className="w-20 h-20 object-cover rounded border mr-4"
+                    />
+                    <div className="flex-1 flex flex-col items-start text-left">
+                      <div className="font-semibold text-base mb-1">{item.title}</div>
+                      <div className="text-sm text-black font-bold">
+                        {lineDiscount > 0 ? (
+                          <>
+                            <span className="line-through text-gray-400 mr-1">€{Math.trunc(lineOriginal)}</span>
+                            <span>€{Math.trunc(lineFinal)}</span>
+                          </>
+                        ) : (
+                          <>€{Math.trunc(lineOriginal)}</>
+                        )}
+                      </div>
+                      {lineDiscount > 0 && (
+                        <span className="text-xs text-green-600">-€{Math.trunc(lineDiscount)} (-{Math.round((lineDiscount/lineOriginal)*100)}%)</span>
+                      )}
                     </div>
-                  </div>
-                  <button
-                    className="ml-2 text-gray-400 hover:text-black text-xl mt-1 p-1"
-                    onClick={async () => {
-                      if (item.id) {
-                        try {
-                          await removeFromCart(item.id);
-                          console.log(`Item ${item.id} removed from header cart`);
-                        } catch (error) {
-                          console.error("Error removing item from header cart:", error);
+                    <button
+                      className="ml-2 text-gray-400 hover:text-black text-xl mt-1 p-1"
+                      onClick={async () => {
+                        if (item.id) {
+                          try {
+                            await removeFromCart(item.id);
+                            console.log(`Item ${item.id} removed from header cart`);
+                          } catch (error) {
+                            console.error("Error removing item from header cart:", error);
+                          }
                         }
-                      }
-                    }}
-                    aria-label="Удалить товар"
-                  >
-                    <X size={18} />
-                  </button>
-                </div>
-              ))
+                      }}
+                      aria-label={t('cart.remove')}
+                    >
+                      <X size={18} />
+                    </button>
+                  </div>
+                );
+              })
             ) : (
-              <div className="text-xs text-gray-400 text-center mt-8">Ваша корзина пуста.</div>
+              <div className="text-xs text-gray-400 text-center mt-8">{t('cart.empty')}</div>
             )}
           </div>
           <div className="pt-4 pb-6 bg-white sticky bottom-0 left-0 right-0 z-10">
             {cart?.items && cart.items.length > 0 && (
-              <div className="flex justify-between items-center mb-3 px-1">
-                <span className="text-lg font-semibold">ИТОГО:</span>
-                <span className="text-lg font-bold">
-                  {(() => {
-                    const totalValue = cart.total;
-                    let numericTotal = NaN;
-                    if (typeof totalValue === 'number') {
-                      numericTotal = totalValue;
-                    } else if (typeof totalValue === 'string') {
-                      numericTotal = parseFloat(totalValue.replace(/[^\d.-]/g, ''));
-                    }
-                    return !isNaN(numericTotal) ? `₽${numericTotal.toFixed(2)}` : 'N/A';
-                  })()}
-                </span>
-              </div>
+              <>
+                {discountAmount > 0 && (
+                  <div className="flex justify-between items-center mb-1 px-1">
+                    <span className="text-sm text-gray-600">{t('cart.discount')}</span>
+                    <span className="text-sm font-medium text-green-600">-€{discountAmount.toFixed(0)}</span>
+                  </div>
+                )}
+                <div className="flex justify-between items-center mb-3 px-1">
+                  <span className="text-lg font-semibold">{t('cart.total')}</span>
+                  <span className="text-lg font-bold">€{Math.round(discountedTotalNumeric)}</span>
+                </div>
+              </>
             )}
             <button
               className="w-full bg-black text-white py-3 font-bold uppercase tracking-wider text-xs rounded"
               disabled={!(cart && cart.items && cart.items.length > 0)}
               onClick={handleCheckout}
             >
-              ОФОРМИТЬ ЗАКАЗ
+              {t('cart.checkout')}
             </button>
           </div>
         </div>

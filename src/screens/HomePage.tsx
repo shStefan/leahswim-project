@@ -1,44 +1,46 @@
 import { Button } from '../components/ui/button';
 import { useState, useEffect, useRef } from 'react';
 import { Link } from 'react-router-dom'; // Uncommented Link
+import { DynamicText } from '../components/DynamicText';
+import { useTranslation } from '../context/TranslationContext';
 
 // Define data for sections to enable mapping
 const sections = [
   {
     id: 1,
-    title: "Купальники",
-    backgroundImage: "https://zdqksnii.elementor.cloud/wp-content/uploads/2025/05/Screenshot-2025-05-28-at-5.08.13%E2%80%AFPM.webp",
-    path: "https://leahcation.ru/category/%25d0%25ba%25d1%2583%25d0%25bf%25d0%25b0%25d0%25bb%25d1%258c%25d0%25bd%25d0%25b8%25d0%25ba%25d0%25b8-2",
+    title: "Swimwear",
+    backgroundImage: "https://zdqksnii.elementor.cloud/wp-content/uploads/2025/07/3y0L1Yh0.jpeg",
+    path: "/category/%25d0%25ba%25d1%2583%25d0%25bf%25d0%25b0%25d0%25bb%25d1%258c%25d0%25bd%25d0%25b8%25d0%25ba%25d0%25b8-2",
   },
   {
     id: 2,
-    title: "Одежда",
+    title: "Clothing",
     backgroundImage: "https://zdqksnii.elementor.cloud/wp-content/uploads/2025/05/second-scaled.webp",
     path: "/category/%25d0%25be%25d0%25b4%25d0%25b5%25d0%25b6%25d0%25b4%25d0%25b0-2",
   },
   {
     id: 3,
-    title: "Аксессуары",
+    title: "Accessories",
     backgroundImage: "https://zdqksnii.elementor.cloud/wp-content/uploads/2025/05/third-scaled.webp",
     path: "/category/%25d0%25b0%25d0%25ba%25d1%2581%25d0%25b5%25d1%2581%25d1%2581%25d1%2583%25d0%25b0%25d1%2580%25d1%258b",
   },
   {
     id: 4,
-    title: "Спорт",
+    title: "Sport",
     backgroundImage: "https://zdqksnii.elementor.cloud/wp-content/uploads/2025/05/Sport.webp",
-    path: "https://leahcation.ru/category/%25d1%2581%25d0%25bf%25d0%25be%25d1%2580%25d1%2582",
+    path: "/category/%25d1%2581%25d0%25bf%25d0%25be%25d1%2580%25d1%2582",
   },
   {
     id: 5,
     title: "Plus size",
-    backgroundImage: "https://zdqksnii.elementor.cloud/wp-content/uploads/2025/05/Plus-size.jpeg",
-    path: "https://leahcation.ru/category/plus-size1",
+    backgroundImage: "https://zdqksnii.elementor.cloud/wp-content/uploads/2025/07/nWHLeQ6Y.jpeg",
+    path: "/category/plus-size1",
   },
   {
     id: 6,
-    title: "Дети",
+    title: "Kids",
     backgroundImage: "https://zdqksnii.elementor.cloud/wp-content/uploads/2025/05/Kids.webp",
-    path: "https://leahcation.ru/category/%25d0%25b4%25d0%25b5%25d1%2582%25d1%2581%25d0%25ba%25d0%25b0%25d1%258f-%25d0%25be%25d0%25b4%25d0%25b5%25d0%25b6%25d0%25b4%25d0%25b0",
+    path: "/category/%25d0%25b4%25d0%25b5%25d1%2582%25d1%2581%25d0%25ba%25d0%25b0%25d1%258f-%25d0%25be%25d0%25b4%25d0%25b5%25d0%25b6%25d0%25b4%25d0%25b0",
   },
 ];
 
@@ -50,6 +52,7 @@ const SMOOTHING_FACTOR = 0.1; // Adjust for more or less smoothing (0.0 to 1.0)
 export const HomePage = (): JSX.Element => {
   const [imageStyles, setImageStyles] = useState<{ [key: number]: { transform: string; height: string } }>({});
   const sectionRefs = useRef<(HTMLElement | null)[]>([]);
+  const { t, language } = useTranslation();
 
   useEffect(() => {
     // Ensure refs array is ready
@@ -153,16 +156,18 @@ export const HomePage = (): JSX.Element => {
 
               {/* Content - layered on top */}
               <div className="relative z-10 flex flex-col items-center justify-end h-full pb-20">
-                <h2 className="font-sans font-normal text-white text-2xl text-center tracking-[0] leading-[31.2px] whitespace-nowrap mb-[15px]">
-                  {section.title}
-                </h2>
-                <Link to={section.path}> {/* Added Link wrapper */}
+                <DynamicText 
+                  text={section.title}
+                  tag="h2"
+                  className="font-sans font-normal text-white text-2xl text-center tracking-[0] leading-[31.2px] whitespace-nowrap mb-[15px]"
+                />
+                <Link to={`${language === 'en' ? '/en' : ''}${section.path}`}> {/* Added Link wrapper */}
                   <Button
                     // variant="outline" // Removed variant for a solid button
                     className="w-[169px] h-[38px] bg-black text-white hover:bg-gray-800 transition-colors rounded-md"
                   >
                     <span className="font-sans font-normal text-sm text-center tracking-[0.42px] leading-[14px] whitespace-nowrap">
-                      Перейти
+                      {t('common.goTo', 'Go to')}
                     </span>
                   </Button>
                 </Link>

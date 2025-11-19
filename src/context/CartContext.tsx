@@ -1,11 +1,12 @@
 import { createContext, useContext, useEffect, useState, ReactNode, useCallback } from 'react';
+import { convertToEUR, formatEURPrice, parseCurrencyEUR } from '../utils/priceUtils';
 
 // Define the structure for a cart item
 interface CartItem {
   id: string; // Product or Variant ID
   parentId?: string; // Parent Product ID, if this item is a variation
   title: string;
-  unit_price: string; // Price as a string, e.g., "100.00" or "₽1000"
+  unit_price: string; // Price as a string, e.g., "100.00" or "€11"
   quantity: number;
   thumbnail?: string;
   // Add other relevant details like size, color if needed later
@@ -14,7 +15,7 @@ interface CartItem {
 // Define the structure for the cart state
 interface CartState {
   items: CartItem[];
-  total: string; // Total price as a formatted string, e.g., "₽5000"
+  total: string; // Total price as a formatted string, e.g., "€54"
 }
 
 interface CartContextType {
@@ -37,21 +38,63 @@ export const useCart = () => {
   return ctx;
 };
 
+// Helper to safely parse a price string such as "€11" to a number 11.00
+// Uses EUR price utility for consistency
+const parsePrice = (value: string | number): number => {
+  if (typeof value === 'number') return value;
+  return parseCurrencyEUR(String(value));
+};
+
+// Calculates the total with discount rules:
+// - If 2 (or more) products: 10% discount on the two MOST expensive items
+// - If 3 (or more) products: + cheapest product is FREE
+// - If 4 (or more) products: + 15% discount on the SECOND cheapest product
+// Quantities are treated individually (e.g. 2 pcs of the same item = 2 products)
 const calculateTotal = (items: CartItem[]): string => {
-  const totalValue = items.reduce((sum, item) => {
-    // Assuming unit_price is a string like "₽123.45" or just "123.45"
-    // This parsing needs to be robust based on actual price format
-    const priceString = item.unit_price.replace(/[^0-9.]/g, '');
-    const price = parseFloat(priceString);
-    return sum + (isNaN(price) ? 0 : price * item.quantity);
-  }, 0);
-  // Assuming currency symbol is desired, and it's Rubles (₽) based on previous code.
-  // This should be made more dynamic if other currencies are possible.
-  return `₽${totalValue.toFixed(2)}`;
+  // 1. Flatten cart items into an array of individual unit prices
+  const unitPrices: number[] = [];
+  items.forEach((item) => {
+    const priceNum = parsePrice(item.unit_price);
+    for (let i = 0; i < item.quantity; i++) {
+      unitPrices.push(priceNum);
+    }
+  });
+
+  if (unitPrices.length === 0) {
+    return '€0';
+  }
+
+  // Sum before discount for later usage (if needed)
+  const totalBefore = unitPrices.reduce((acc, p) => acc + p, 0);
+
+  // Sort prices for discount logic
+  const asc = [...unitPrices].sort((a, b) => a - b); // ascending
+  const desc = [...unitPrices].sort((a, b) => b - a); // descending
+
+  let discount = 0;
+
+  // Apply 10% on two most expensive if at least 2 products
+  if (unitPrices.length >= 2) {
+    discount += 0.1 * (desc[0] + desc[1]);
+  }
+
+  // Cheapest item free if at least 3 products
+  if (unitPrices.length >= 3) {
+    discount += asc[0];
+  }
+
+  // 15% off second cheapest if at least 4 products
+  if (unitPrices.length >= 4) {
+    discount += 0.15 * asc[1];
+  }
+
+  const finalTotal = Math.max(totalBefore - discount, 0); // Safety: prevent negative
+
+  return formatEURPrice(finalTotal);
 };
 
 export const CartProvider = ({ children }: { children: ReactNode }) => {
-  const [cart, setCart] = useState<CartState>({ items: [], total: '₽0.00' });
+  const [cart, setCart] = useState<CartState>({ items: [], total: '€0' });
   const [loading, setLoading] = useState(true); // For initial load
   const [isCartDrawerOpen, setIsCartDrawerOpen] = useState(false); // New state variable for drawer
 
@@ -67,14 +110,14 @@ export const CartProvider = ({ children }: { children: ReactNode }) => {
         setCart(parsedCart);
       } else {
         // Initialize with an empty cart if nothing in storage
-        const initialCart = { items: [], total: '₽0.00' };
+        const initialCart = { items: [], total: '€0' };
         setCart(initialCart);
         localStorage.setItem('local_cart', JSON.stringify(initialCart));
       }
     } catch (error) {
       console.error("Failed to load cart from localStorage", error);
       // Fallback to an empty cart
-      const initialCart = { items: [], total: '₽0.00' };
+      const initialCart = { items: [], total: '€0' };
       setCart(initialCart);
       localStorage.setItem('local_cart', JSON.stringify(initialCart));
     } finally {

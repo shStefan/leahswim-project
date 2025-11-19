@@ -2,34 +2,32 @@ import React, { useState, useEffect } from 'react';
 import { useCart } from '../context/CartContext';
 import { Button } from '../components/ui/button';
 import { Link, useNavigate } from 'react-router-dom';
+import { DynamicText } from '../components/DynamicText';
+import { useTranslation } from '../context/TranslationContext';
+import { convertAndFormatPrice, parseCurrencyEUR } from '../utils/priceUtils';
+import { apiEndpoints } from '../utils/apiConfig';
 
 // Declare CloudPayments global object for TypeScript
 declare var cp: any;
 
-const WC_CONSUMER_KEY = 'ck_c2758a311f98c4c5a4e44b85a5a66eae4a0581c3';
-const WC_CONSUMER_SECRET = 'cs_7b0d34c68e68a5ae5cebf19a6d23338ab83de571';
-const WC_API_URL = 'https://zdqksnii.elementor.cloud/wp-json/wc/v3';
-
 // CloudPayments Public ID
-const CP_PUBLIC_ID = 'pk_708bf734b3864ec6432f7d4e24382';
+const CLOUDPAYMENTS_PUBLIC_ID = 'pk_9d3e3480c29078014d6f10331b5a7f7c';
 
-// Helper to parse currency string to number
+// Helper to parse currency string to EUR number
 const parseCurrency = (currencyString: string): number => {
-  if (!currencyString) return 0;
-  const numericString = String(currencyString).replace(/[^0-9.]/g, '');
-  const value = parseFloat(numericString);
-  return isNaN(value) ? 0 : value;
+  return parseCurrencyEUR(currencyString);
 };
-
-const deliveryOptions = [
-  { id: 'mkad_within', label: "В пределах МКАД", cost: 10 },
-  { id: 'mkad_outside_20', label: "За пределами МКАД (до 20км)", cost: 1000 },
-  { id: 'mkad_outside_over_20', label: "За пределами МКАД (после 20 км)", cost: 1500 },
-];
 
 const CheckoutPage: React.FC = () => {
   const { cart, clearCart } = useCart(); // cart object contains cart.total and cart.items
   const navigate = useNavigate();
+  const { t } = useTranslation();
+  
+  const deliveryOptions = [
+    { id: 'mkad_within', label: t('delivery.withinMKADFree'), cost: 0 },
+    { id: 'mkad_outside_20', label: t('delivery.outsideMKAD20km'), cost: 0 },
+    { id: 'mkad_outside_over_20', label: t('delivery.outsideMKADOver20km'), cost: 0 },
+  ];
   const [form, setForm] = useState({
     first_name: '',
     last_name: '',
@@ -57,7 +55,7 @@ const CheckoutPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!cart || !cart.items || cart.items.length === 0) {
-        setError('Ваша корзина пуста. Пожалуйста, добавьте товары перед оформлением заказа.');
+        setError(t('checkout.emptyCartMessage'));
         return;
     }
     setLoading(true);
@@ -79,10 +77,10 @@ const CheckoutPage: React.FC = () => {
 
       widget.pay('charge',
         { //options
-          publicId: CP_PUBLIC_ID,
-          description: `Оплата заказа ${clientGeneratedInvoiceId} в example.com`, // Use client generated ID
+          publicId: CLOUDPAYMENTS_PUBLIC_ID,
+          description: `${t('checkout.paymentDescription')} ${clientGeneratedInvoiceId}`, // Use client generated ID
           amount: totalAmountForPayment,
-          currency: 'RUB',
+          currency: 'EUR',
           accountId: form.email,
           invoiceId: clientGeneratedInvoiceId, // Use client generated ID
           email: form.email,
@@ -169,6 +167,9 @@ const CheckoutPage: React.FC = () => {
                     product_id: item.parentId ? parseInt(item.parentId, 10) : parseInt(item.id, 10),
                     quantity: item.quantity,
                     variation_id: item.parentId ? parseInt(item.id, 10) : undefined,
+                    name: item.title,
+                    price: parseCurrency(item.unit_price),
+                    total: (parseCurrency(item.unit_price) * item.quantity).toString()
                   })),
                   shipping_lines: [
                     {
@@ -192,7 +193,7 @@ const CheckoutPage: React.FC = () => {
                     {
                       key: '_payment_currency',
                       // Ensure cpOptions and cpOptions.currency are available
-                      value: cpOptions?.currency || 'RUB'
+                      value: cpOptions?.currency || 'EUR'
                     }
                   ]
                 };
@@ -204,11 +205,11 @@ const CheckoutPage: React.FC = () => {
 
                 console.log(`[CheckoutPage - onComplete] Attempting to create WC order with payload:`, JSON.stringify(orderPayload, null, 2));
                 
-                const orderRes = await fetch(`${WC_API_URL}/orders`, {
+                const { url: ordersUrl, options: ordersOptions } = apiEndpoints.orders();
+                const orderRes = await fetch(ordersUrl, {
                   method: 'POST',
                   headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Basic ' + btoa(WC_CONSUMER_KEY + ':' + WC_CONSUMER_SECRET),
+                    ...ordersOptions.headers,
                   },
                   body: JSON.stringify(orderPayload),
                 });
@@ -218,17 +219,17 @@ const CheckoutPage: React.FC = () => {
 
                 if (!orderRes.ok) {
                   console.error('[CheckoutPage - onComplete] Ошибка создания заказа WooCommerce после успешной оплаты:', orderData);
-                  let errorMessage = `Платеж прошел успешно`;
+                  let errorMessage = t('checkout.paymentSuccess');
                   if (extractedTransactionId) {
-                      errorMessage += ` (ID транзакции: ${extractedTransactionId})`;
+                      errorMessage += ` (${t('checkout.transactionId')}: ${extractedTransactionId})`;
                   } else {
-                      errorMessage += ` (ID транзакции CloudPayments не был получен)`;
+                      errorMessage += ` (${t('checkout.transactionIdNotReceived')})`;
                   }
-                  errorMessage += `, но не удалось создать заказ в системе. Пожалуйста, срочно свяжитесь с поддержкой`;
+                  errorMessage += t('checkout.orderCreationFailed');
                   if (extractedTransactionId) {
-                      errorMessage += `, сообщив ID транзакции.`;
+                      errorMessage += t('checkout.reportTransactionId');
                   } else {
-                      errorMessage += `, сообщив внутренний ID отслеживания: ${clientGeneratedInvoiceId}.`;
+                      errorMessage += ` ${t('checkout.reportTrackingId')}: ${clientGeneratedInvoiceId}.`;
                   }
                   setError(errorMessage);
                   return; 
@@ -237,11 +238,11 @@ const CheckoutPage: React.FC = () => {
                 const wcOrderId = orderData.id;
                 console.log(`[CheckoutPage - onComplete] WC order ${wcOrderId} created successfully.`);
                 
-                let successMessage = `Заказ №${wcOrderId} успешно оплачен и создан!`;
+                let successMessage = t('checkout.orderSuccess').replace('{id}', wcOrderId.toString());
                 if (extractedTransactionId) {
-                    successMessage += ` ID транзакции: ${extractedTransactionId}.`;
+                    successMessage += ` ${t('checkout.transactionId')}: ${extractedTransactionId}.`;
                 } else {
-                    successMessage += ` (ID транзакции CloudPayments не был получен; используется внутренний ID отслеживания: ${clientGeneratedInvoiceId}).`;
+                    successMessage += ` (${t('checkout.transactionIdNotReceived')}; using tracking ID: ${clientGeneratedInvoiceId}).`;
                 }
                 setSuccess(successMessage);
 
@@ -250,17 +251,17 @@ const CheckoutPage: React.FC = () => {
 
               } catch (wcCreateError: any) {
                 console.error(`[CheckoutPage - onComplete] Critical error during WC order creation after payment:`, wcCreateError);
-                let errorMessage = `Платеж прошел успешно`;
+                let errorMessage = t('checkout.paymentSuccess');
                 if (extractedTransactionId) {
-                    errorMessage += ` (ID транзакции: ${extractedTransactionId})`;
+                    errorMessage += ` (${t('checkout.transactionId')}: ${extractedTransactionId})`;
                 } else {
-                    errorMessage += ` (ID транзакции CloudPayments не был получен)`;
+                    errorMessage += ` (${t('checkout.transactionIdNotReceived')})`;
                 }
-                errorMessage += `, но произошла критическая ошибка при создании заказа. Свяжитесь с поддержкой`;
+                errorMessage += t('checkout.criticalError');
                 if (extractedTransactionId) {
-                    errorMessage += `, сообщив ID транзакции.`;
+                    errorMessage += t('checkout.reportTransactionId');
                 } else {
-                    errorMessage += `, сообщив внутренний ID отслеживания: ${clientGeneratedInvoiceId}.`;
+                    errorMessage += ` ${t('checkout.reportTrackingId')}: ${clientGeneratedInvoiceId}.`;
                 }
                 setError(errorMessage);
               } finally {
@@ -306,41 +307,41 @@ const CheckoutPage: React.FC = () => {
           <div className="md:col-span-3 bg-white p-4 sm:p-6 rounded-xl shadow-lg mb-8 md:mb-0">
             <form id="checkout-form" className="space-y-5" onSubmit={handleSubmit}>
               <div>
-                <label htmlFor="first_name" className="block text-sm font-medium text-gray-700 mb-1">Имя *</label>
+                <label htmlFor="first_name" className="block text-sm font-medium text-gray-700 mb-1">{t('form.firstName')} *</label>
                 <input name="first_name" id="first_name" value={form.first_name} onChange={handleChange} type="text" required className="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm p-2.5" />
               </div>
               <div>
-                <label htmlFor="last_name" className="block text-sm font-medium text-gray-700 mb-1">Фамилия *</label>
+                <label htmlFor="last_name" className="block text-sm font-medium text-gray-700 mb-1">{t('form.lastName')} *</label>
                 <input name="last_name" id="last_name" value={form.last_name} onChange={handleChange} type="text" required className="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm p-2.5" />
               </div>
               <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">Email *</label>
+                <label htmlFor="email" className="block text-sm font-medium text-gray-700 mb-1">{t('form.email')} *</label>
                 <input name="email" id="email" value={form.email} onChange={handleChange} type="email" required className="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm p-2.5" />
               </div>
               <div>
-                <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">Телефон *</label>
+                <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">{t('form.phone')} *</label>
                 <input name="phone" id="phone" value={form.phone} onChange={handleChange} type="tel" required className="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm p-2.5" placeholder="+7 (XXX) XXX-XX-XX"/>
               </div>
               <div>
-                <label htmlFor="address_1" className="block text-sm font-medium text-gray-700 mb-1">Адрес (Улица, дом, квартира) *</label>
+                <label htmlFor="address_1" className="block text-sm font-medium text-gray-700 mb-1">{t('form.address')} *</label>
                 <input name="address_1" id="address_1" value={form.address_1} onChange={handleChange} type="text" required className="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm p-2.5" />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                 <div>
-                  <label htmlFor="city" className="block text-sm font-medium text-gray-700 mb-1">Город *</label>
+                  <label htmlFor="city" className="block text-sm font-medium text-gray-700 mb-1">{t('form.city')} *</label>
                   <input name="city" id="city" value={form.city} onChange={handleChange} type="text" required className="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm p-2.5" />
                 </div>
                 <div>
-                  <label htmlFor="postcode" className="block text-sm font-medium text-gray-700 mb-1">Почтовый индекс *</label>
+                  <label htmlFor="postcode" className="block text-sm font-medium text-gray-700 mb-1">{t('form.postcode')} *</label>
                   <input name="postcode" id="postcode" value={form.postcode} onChange={handleChange} type="text" required className="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm p-2.5" />
                 </div>
               </div>
               <div>
-                <label htmlFor="country" className="block text-sm font-medium text-gray-700 mb-1">Страна *</label>
+                <label htmlFor="country" className="block text-sm font-medium text-gray-700 mb-1">{t('form.country')} *</label>
                 <input name="country" id="country" value={form.country} onChange={handleChange} type="text" required className="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm p-2.5" />
               </div>
               <div>
-                <label htmlFor="delivery_option" className="block text-sm font-medium text-gray-700 mb-1">Доставка *</label>
+                <label htmlFor="delivery_option" className="block text-sm font-medium text-gray-700 mb-1">{t('form.deliveryOption')} *</label>
                 <select
                   name="delivery_option"
                   id="delivery_option"
@@ -351,7 +352,7 @@ const CheckoutPage: React.FC = () => {
                 >
                   {deliveryOptions.map(option => (
                     <option key={option.id} value={option.id}>
-                      {option.label} - {option.cost}₽
+                      {option.label} - {option.cost === 0 ? t('checkout.free') : `€${Math.round(option.cost / 92)}`}
                     </option>
                   ))}
                 </select>
@@ -361,43 +362,111 @@ const CheckoutPage: React.FC = () => {
 
           {/* Right Card: Order Summary & Payment */}
           <div className="md:col-span-2 bg-white p-4 sm:p-6 rounded-xl shadow-lg flex flex-col h-fit sticky top-28">
-            <h3 className="text-xl font-semibold text-gray-800 mb-6">Ваш заказ</h3>
+            <h3 className="text-xl font-semibold text-gray-800 mb-6">{t('checkout.title')}</h3>
             <div className="flex-grow overflow-y-auto space-y-3 mb-6 pr-2 max-h-80">
               {cart?.items && cart.items.length > 0 ? (
-                cart.items.map((item: any) => (
-                  <div key={item.id} className="flex items-center py-3 border-b border-gray-200 last:border-b-0">
-                    <img
-                      src={item.thumbnail || '/placeholder.png'}
-                      alt={item.title}
-                      className="w-16 h-20 object-cover rounded-md border border-gray-200 mr-4"
-                    />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-gray-800 truncate">{item.title}</p>
-                      <p className="text-xs text-gray-500 mt-0.5">Кол-во: {item.quantity}</p>
-                    </div>
-                    <p className="text-sm font-medium text-gray-800 ml-4 whitespace-nowrap">
-                      {`₽${Math.trunc(parseCurrency(item.unit_price) * item.quantity)}`}
-                    </p>
-                  </div>
-                ))
+                (() => {
+                  // Compute per-item discount map similar to header
+                  const unitArr: {price: number; itemId: string}[] = [];
+                  cart.items.forEach((itm: any) => {
+                    const pNum = parseCurrency(itm.unit_price);
+                    for (let i = 0; i < itm.quantity; i++) unitArr.push({price: pNum, itemId: itm.id});
+                  });
+                  const desc = [...unitArr].sort((a, b) => b.price - a.price);
+                  const asc = [...unitArr].sort((a, b) => a.price - b.price);
+                  const used = new Set<number>();
+                  const perUnitDisc: number[] = new Array(unitArr.length).fill(0);
+                  // 10% on top two
+                  if (unitArr.length >=2) {
+                    let c=0; for(let i=0;i<desc.length&&c<2;i++){const idx=unitArr.indexOf(desc[i]);if(!used.has(idx)){perUnitDisc[idx]=desc[i].price*0.1;used.add(idx);c++;}}
+                  }
+                  // cheapest free
+                  if(unitArr.length>=3){for(let i=0;i<asc.length;i++){const idx=unitArr.indexOf(asc[i]);if(!used.has(idx)){perUnitDisc[idx]=asc[i].price;used.add(idx);break;}}
+                  }
+                  // 15% off second cheapest (cheapest remaining after free item)
+                  if(unitArr.length>=4){
+                    for(let i=0;i<asc.length;i++){
+                      const idx=unitArr.indexOf(asc[i]);
+                      if(!used.has(idx)){
+                        perUnitDisc[idx]=asc[i].price*0.15;
+                        used.add(idx);
+                        break;
+                      }
+                    }
+                  }
+                  const discMap: Record<string, number> = {};
+                  unitArr.forEach((u, idx) => {
+                    discMap[u.itemId] = (discMap[u.itemId] || 0) + perUnitDisc[idx];
+                  });
+                  return cart.items.map((item: any) => {
+                    const orig = parseCurrency(item.unit_price)*item.quantity;
+                    const disc = discMap[item.id] || 0;
+                    const final = orig - disc;
+                    return (
+                      <div key={item.id} className="flex items-center py-3 border-b border-gray-200 last:border-b-0">
+                        <img
+                          src={item.thumbnail || '/placeholder.png'}
+                          alt={item.title}
+                          className="w-16 h-20 object-cover rounded-md border border-gray-200 mr-4"
+                        />
+                        <div className="flex-1 min-w-0">
+                          <DynamicText 
+                            text={item.title}
+                            tag="p"
+                            className="text-sm font-medium text-gray-800 truncate"
+                          />
+                          <p className="text-xs text-gray-500 mt-0.5">{t('common.quantity')}: {item.quantity}</p>
+                        </div>
+                        <div className="text-sm font-medium text-gray-800 ml-4 whitespace-nowrap flex flex-col items-end">
+                          {disc>0 ? (
+                            <>
+                              <span className="line-through text-gray-400 text-xs">€{Math.trunc(orig)}</span>
+                              <span>€{Math.trunc(final)}</span>
+                              <span className="text-xs text-green-600 ml-1">(-{Math.round(disc/orig*100)}%)</span>
+                            </>
+                          ): (
+                            <span>€{Math.trunc(orig)}</span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  });
+                })()
               ) : (
-                <p className="text-sm text-gray-500 text-center py-4">Ваша корзина пуста.</p>
+                <p className="text-sm text-gray-500 text-center py-4">{t('checkout.emptyCart')}</p>
               )}
             </div>
             
             {cart?.items && cart.items.length > 0 && (
               <div className="border-t border-gray-200 pt-6 space-y-3">
+                {(() => {
+                  const originalSub = cart.items.reduce((sum: number, item: any) => sum + parseCurrency(item.unit_price) * item.quantity, 0);
+                  const discountedSub = parseCurrency(cart.total);
+                  const discountValue = Math.max(originalSub - discountedSub, 0);
+                  return (
+                    <>
+                      <div className="flex justify-between text-sm text-gray-600">
+                        <span>{t('checkout.subtotal')}</span>
+                        <span className="font-medium text-gray-800">{`€${Math.trunc(originalSub)}`}</span>
+                      </div>
+                      {discountValue > 0 && (
+                        <div className="flex justify-between text-sm text-gray-600">
+                          <span>{t('cart.discount')}</span>
+                          <span className="font-medium text-green-600">-€{Math.trunc(discountValue)}</span>
+                        </div>
+                      )}
+                    </>
+                  );
+                })()}
                 <div className="flex justify-between text-sm text-gray-600">
-                  <span>Промежуточный итог</span>
-                  <span className="font-medium text-gray-800">{`₽${Math.trunc(parseCurrency(cart.total))}`}</span>
-                </div>
-                <div className="flex justify-between text-sm text-gray-600">
-                  <span>Доставка</span>
-                  <span className="font-medium text-gray-800">{`₽${(deliveryOptions.find(opt => opt.id === selectedDeliveryOptionId) || deliveryOptions[0]).cost}`}</span>
+                  <span>{t('checkout.delivery')}</span>
+                  <span className="font-medium text-gray-800">
+                    {((deliveryOptions.find(opt => opt.id === selectedDeliveryOptionId) || deliveryOptions[0]).cost === 0) ? t('checkout.free') : `€${Math.round((deliveryOptions.find(opt => opt.id === selectedDeliveryOptionId) || deliveryOptions[0]).cost / 92)}`}
+                  </span>
                 </div>
                 <div className="flex justify-between text-base font-semibold text-gray-900 pt-2 border-t border-gray-200 mt-3">
-                  <span>Итого к оплате</span>
-                  <span>{`₽${Math.trunc(parseCurrency(cart.total) + (deliveryOptions.find(opt => opt.id === selectedDeliveryOptionId) || deliveryOptions[0]).cost)}`}</span>
+                  <span>{t('checkout.totalToPay')}</span>
+                  <span>{`€${Math.trunc(parseCurrency(cart.total) + Math.round((deliveryOptions.find(opt => opt.id === selectedDeliveryOptionId) || deliveryOptions[0]).cost / 92))}`}</span>
                 </div>
                 {error && (
                   <div className="text-red-600 text-sm p-3 bg-red-50 rounded-md">
@@ -416,17 +485,17 @@ const CheckoutPage: React.FC = () => {
                         <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
                         <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
                       </svg>
-                      Обработка...
+                      {t('checkout.processing')}
                     </>
-                  ) : 'Подтвердить и оплатить'}
+                  ) : t('checkout.confirmAndPay')}
                 </Button>
                 <p className="mt-2 text-xs text-gray-500 text-center">
-                  Оплата банковской картой через CloudPayments
+                  {t('checkout.paymentMethod')}
                 </p>
               </div>
             )}
             <p className="mt-6 text-xs text-gray-500 text-center">
-              Нажимая «Подтвердить и оплатить», вы соглашаетесь с нашими <a href="/terms" className="underline hover:text-gray-700">Условиями обслуживания</a> и <a href="/privacy" className="underline hover:text-gray-700">Политикой конфиденциальности</a>.
+              {t('checkout.agreeTerms')} <a href="/terms" className="underline hover:text-gray-700">{t('checkout.termsOfService')}</a> {t('checkout.and')} <a href="/privacy" className="underline hover:text-gray-700">{t('checkout.privacyPolicy')}</a>.
             </p>
           </div>
         </div>

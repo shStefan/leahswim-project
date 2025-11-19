@@ -1,4 +1,5 @@
 import React from 'react';
+import { DynamicText } from '../components/DynamicText';
 
 const aboutSections = [
   {
@@ -47,9 +48,18 @@ const AboutPage = () => {
               />
             </div>
             <div className="md:w-1/2 w-full flex flex-col items-start text-left">
-              <h2 className="font-sans text-2xl md:text-2xl font-bold mb-4 tracking-tight text-black">{section.title}</h2>
+              <DynamicText 
+                text={section.title}
+                tag="h2"
+                className="font-sans text-2xl md:text-2xl font-bold mb-4 tracking-tight text-black"
+              />
               {section.paragraphs.map((para, i) => (
-                <p key={i} className="font-sans text-lg md:text-lg text-gray-700 leading-relaxed max-w-xl mb-4 last:mb-0">{para}</p>
+                <DynamicText 
+                  key={i}
+                  text={para}
+                  tag="p"
+                  className="font-sans text-lg md:text-lg text-gray-700 leading-relaxed max-w-xl mb-4 last:mb-0"
+                />
               ))}
             </div>
           </section>

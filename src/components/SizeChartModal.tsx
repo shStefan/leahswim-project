@@ -9,10 +9,10 @@ const SizeChartModal: React.FC<SizeChartModalProps> = ({ isOpen, onClose }) => {
   if (!isOpen) return null;
 
   const sizeData = [
-    { measurement: 'Размер', xs: 'XS', s: 'S', m: 'M', l: 'L', xl: 'XL', xxl: 'XXL' },
-    { measurement: 'Бюст/см', xs: '82-86', s: '87-91', m: '92-97', l: '98-109', xl: '110-117', xxl: '118-122' },
-    { measurement: 'Талия/см', xs: '55-59', s: '60-66', m: '67-76', l: '77-88', xl: '90-98', xxl: '98-104' },
-    { measurement: 'Бедра/см', xs: '84-88', s: '89-93', m: '94-100', l: '101-109', xl: '110-117', xxl: '118-122' },
+      { measurement: 'Size', xs: 'XS', s: 'S', m: 'M', l: 'L', xl: 'XL', xxl: 'XXL' },
+  { measurement: 'Bust/cm', xs: '82-86', s: '87-91', m: '92-97', l: '98-109', xl: '110-117', xxl: '118-122' },
+  { measurement: 'Waist/cm', xs: '55-59', s: '60-66', m: '67-76', l: '77-88', xl: '90-98', xxl: '98-104' },
+  { measurement: 'Hips/cm', xs: '84-88', s: '89-93', m: '94-100', l: '101-109', xl: '110-117', xxl: '118-122' },
   ];
 
   return (
@@ -33,7 +33,7 @@ const SizeChartModal: React.FC<SizeChartModalProps> = ({ isOpen, onClose }) => {
       >
         <div className="bg-white/90 border border-gray-200 backdrop-blur-md rounded-2xl shadow-2xl w-full max-w-2xl mx-auto transition-all duration-300 ease-in-out transform scale-100 opacity-100">
           <div className="flex justify-between items-center p-4 border-b border-gray-200">
-            <h2 id="size-chart-modal-title" className="text-lg font-semibold text-black">Размерная таблица для купальников LÉAH</h2>
+            <h2 id="size-chart-modal-title" className="text-lg font-semibold text-black">Size Chart for LÉAH Swimwear</h2>
             <button 
               onClick={onClose} 
               className="text-gray-500 hover:text-gray-700 p-1 rounded-full hover:bg-gray-100 transition-colors"
@@ -71,7 +71,7 @@ const SizeChartModal: React.FC<SizeChartModalProps> = ({ isOpen, onClose }) => {
               onClick={onClose}
               className="px-4 py-2 bg-black text-white text-sm font-medium rounded-lg hover:bg-gray-800 focus:outline-none focus:ring-2 focus:ring-gray-500 focus:ring-offset-2 transition-colors"
             >
-              Понятно
+              Got it
             </button>
           </div>
         </div>

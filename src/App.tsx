@@ -12,32 +12,50 @@ import CheckoutPage from './screens/CheckoutPage';
 import AboutPage from './screens/AboutPage';
 import ContactPage from './screens/ContactPage';
 import ScrollToTop from './components/ScrollToTop';
+import { useState } from 'react';
+import { TranslationProvider } from './context/TranslationContext';
+import { YandexFeedGenerator } from './components/YandexFeedGenerator';
 
 function App() {
+  // Disabled PromoModal for English version
+  // const [showPromo, setShowPromo] = useState(true);
+
   return (
-    <CartProvider>
-      <LikesProvider>
-        <Router>
-          <ScrollToTop />
-          <Header />
-          <div className="min-h-screen bg-white flex flex-col">
-            <div className="flex-1">
-              <Routes>
-                <Route path="/" element={<HomePage />} />
-                <Route path="/catalogue" element={<CataloguePage />} />
-                <Route path="/category/:categorySlug" element={<CategorySpecificPage />} />
-                <Route path="/product/:id" element={<ProductPage />} />
-                <Route path="/medusa-test" element={<MedusaTest />} />
-                <Route path="/checkout" element={<CheckoutPage />} />
-                <Route path="/about" element={<AboutPage />} />
-                <Route path="/contact" element={<ContactPage />} />
-              </Routes>
+    <TranslationProvider>
+      <CartProvider>
+        <LikesProvider>
+          <Router>
+            <ScrollToTop />
+            {/* PromoModal disabled for English version */}
+            <Header />
+            <div className="min-h-screen bg-white flex flex-col">
+              <div className="flex-1">
+                <Routes>
+                  <Route path="/" element={<HomePage />} />
+                  <Route path="/en" element={<HomePage />} />
+                  <Route path="/catalogue" element={<CataloguePage />} />
+                  <Route path="/en/catalogue" element={<CataloguePage />} />
+                  <Route path="/category/:categorySlug" element={<CategorySpecificPage />} />
+                  <Route path="/en/category/:categorySlug" element={<CategorySpecificPage />} />
+                  <Route path="/product/:id" element={<ProductPage />} />
+                  <Route path="/en/product/:id" element={<ProductPage />} />
+                  <Route path="/medusa-test" element={<MedusaTest />} />
+                  <Route path="/en/medusa-test" element={<MedusaTest />} />
+                  <Route path="/checkout" element={<CheckoutPage />} />
+                  <Route path="/en/checkout" element={<CheckoutPage />} />
+                  <Route path="/about" element={<AboutPage />} />
+                  <Route path="/en/about" element={<AboutPage />} />
+                  <Route path="/contact" element={<ContactPage />} />
+                  <Route path="/en/contact" element={<ContactPage />} />
+                  <Route path="/admin/yandex-feed" element={<YandexFeedGenerator />} />
+                </Routes>
+              </div>
+              <Footer />
             </div>
-            <Footer />
-          </div>
-        </Router>
-      </LikesProvider>
-    </CartProvider>
+          </Router>
+        </LikesProvider>
+      </CartProvider>
+    </TranslationProvider>
   );
 }
 

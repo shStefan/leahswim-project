@@ -5,6 +5,11 @@ import { useLikes } from '../context/LikesContext';
 import { useCart } from '../context/CartContext';
 import { ProductCardSkeleton } from '../components/ProductCardSkeleton';
 import SelectedFiltersDisplay from '../components/SelectedFiltersDisplay';
+import { ProxiedImage } from '../components/ProxiedImage';
+import { DynamicText } from '../components/DynamicText';
+import { useTranslation } from '../context/TranslationContext';
+import { convertAndFormatPrice } from '../utils/priceUtils';
+import { apiEndpoints } from '../utils/apiConfig';
 
 // Cache constants and helper functions
 const CACHE_DURATION_MS = 24 * 60 * 60 * 1000; // 1 day
@@ -89,6 +94,7 @@ export const CategorySpecificPage = (): JSX.Element => {
   const { categorySlug } = useParams<{ categorySlug: string }>();
   const [searchParams, setSearchParams] = useSearchParams();
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const [currentCategory, setCurrentCategory] = useState<Category | null>(null);
   const [subCategoriesForFilter, setSubCategoriesForFilter] = useState<Category[]>([]);
@@ -112,9 +118,6 @@ export const CategorySpecificPage = (): JSX.Element => {
   const { likedProducts, likedProductsCache, toggleLike } = useLikes();
   const { addToCart } = useCart();
 
-  const WC_CONSUMER_KEY = 'ck_c2758a311f98c4c5a4e44b85a5a66eae4a0581c3';
-  const WC_CONSUMER_SECRET = 'cs_7b0d34c68e68a5ae5cebf19a6d23338ab83de571';
-  const WC_API_URL = 'https://zdqksnii.elementor.cloud/wp-json/wc/v3';
 
   const getColorHex = (colorName: string) => {
     const colorMap: { [key: string]: string } = {
@@ -246,7 +249,8 @@ export const CategorySpecificPage = (): JSX.Element => {
     console.log('Fetching categories from API');
     setLoading(true); 
 
-    fetch(`${WC_API_URL}/products/categories?per_page=100&consumer_key=${WC_CONSUMER_KEY}&consumer_secret=${WC_CONSUMER_SECRET}`)
+    const { url, options } = apiEndpoints.categories('per_page=100');
+    fetch(url, options)
       .then(res => res.ok ? res.json() : Promise.reject(`Failed to fetch categories: ${res.status}`))
       .then((data: Category[]) => {
         if (Array.isArray(data)) {
@@ -271,7 +275,7 @@ export const CategorySpecificPage = (): JSX.Element => {
       .finally(() => {
         setLoading(false);
       });
-  }, [categorySlug, WC_API_URL, WC_CONSUMER_KEY, WC_CONSUMER_SECRET]); // Added API constants to deps, though they are unlikely to change
+  }, [categorySlug]); // Added API constants to deps, though they are unlikely to change
 
   // Fetch products for the current category ID
   useEffect(() => {
@@ -300,15 +304,15 @@ export const CategorySpecificPage = (): JSX.Element => {
       setLoading(true);
       setError(null);
       try {
-        let productsApiUrl = '';
         const optimizedCategoryIds = [153, 23, 21, 19, 16]; // New: array of IDs
 
+        let productsParams: string;
         if (currentCategory && optimizedCategoryIds.includes(currentCategory.id)) {
           console.log(`Using optimized endpoint for category: ${currentCategory.name} (ID: ${currentCategory.id})`);
-          productsApiUrl = `${WC_API_URL}/products?category=${currentCategory.id}&status=publish&per_page=100&_fields=id,name,type,price,status,slug,images,attributes,variations,categories,date_modified&consumer_key=${WC_CONSUMER_KEY}&consumer_secret=${WC_CONSUMER_SECRET}`;
+          productsParams = `category=${currentCategory.id}&status=publish&per_page=100&_fields=id,name,type,price,status,slug,images,attributes,variations,categories,date_modified`;
         } else if (currentCategory) {
           console.log(`Using standard endpoint for category: ${currentCategory.name} (ID: ${currentCategory.id})`);
-          productsApiUrl = `${WC_API_URL}/products?category=${currentCategory.id}&per_page=100&consumer_key=${WC_CONSUMER_KEY}&consumer_secret=${WC_CONSUMER_SECRET}&status=publish`;
+          productsParams = `category=${currentCategory.id}&per_page=100&status=publish`;
         } else {
           // Should not happen if currentCategory is checked before calling, but as a fallback:
           setError("Category not loaded, cannot fetch products.");
@@ -318,7 +322,8 @@ export const CategorySpecificPage = (): JSX.Element => {
         
         // console.log(`Fetching products for category: ${currentCategory.name} (ID: ${currentCategory.id}) from ${productsApiUrl}`); // Already logged above
         
-        const productsResponse = await fetch(productsApiUrl);
+        const { url: productsUrl, options: productsOptions } = apiEndpoints.products(productsParams);
+        const productsResponse = await fetch(productsUrl, productsOptions);
         if (!productsResponse.ok) {
           throw new Error(`Failed to fetch products for category ${currentCategory.name}: ${productsResponse.status}`);
         }
@@ -340,7 +345,8 @@ export const CategorySpecificPage = (): JSX.Element => {
 
           if (product.type === 'variable' && product.variations && product.variations.length > 0) {
             try {
-              const variationsResponse = await fetch(`${WC_API_URL}/products/${product.id}/variations?consumer_key=${WC_CONSUMER_KEY}&consumer_secret=${WC_CONSUMER_SECRET}&per_page=100`);
+              const { url: variationsUrl, options: variationsOptions } = apiEndpoints.variations(String(product.id), 'per_page=100');
+              const variationsResponse = await fetch(variationsUrl, variationsOptions);
               if (!variationsResponse.ok) {
                  console.warn(`Failed to fetch variations for product ${product.id}. Using parent product.`);
                  const imgSrc = productImages[0]?.src || '/placeholder.png';
@@ -473,7 +479,7 @@ export const CategorySpecificPage = (): JSX.Element => {
     };
 
     fetchProductsAndVariations();
-  }, [currentCategory, WC_API_URL, WC_CONSUMER_KEY, WC_CONSUMER_SECRET]);
+  }, [currentCategory]);
 
 
   const allSizes = Array.from(new Set(displayableProducts?.flatMap(p => p.attributes?.find(attr => attr.slug === 'pa_size')?.options || []).filter(Boolean) || []));
@@ -587,7 +593,10 @@ export const CategorySpecificPage = (): JSX.Element => {
               paddingLeft: `${1 + level * 0.75}rem`,
             }}
           >
-            <span>{category.name} {category.count !== undefined ? `(${category.count})` : ''}</span>
+            <span>
+              <DynamicText text={category.name} />
+              {category.count !== undefined ? ` (${category.count})` : ''}
+            </span>
             {level === 0 && category.children && category.children.length > 0 && (
               <ChevronDown 
                 className={`ml-2 w-4 h-4 transform transition-transform duration-200 flex-shrink-0 ${expandedParentId === category.id ? 'rotate-180' : ''}`}
@@ -619,7 +628,7 @@ export const CategorySpecificPage = (): JSX.Element => {
           >
             <div className="px-4 py-2 cursor-pointer hover:bg-gray-100 text-sm flex items-center border-b border-gray-200"
               onClick={() => { onSelect(''); setOpenDropdown(null); }} style={{ fontWeight: !selected ? 'bold' : 'normal' }}
-            >Все</div>
+                          >{t('common.all')}</div>
             {id === 'color-csp' ? (
               <div className="flex flex-wrap gap-1 p-2 justify-start">
                 {safeOptions.map(opt => {
@@ -668,7 +677,10 @@ export const CategorySpecificPage = (): JSX.Element => {
             setSelectedSubCategoryId(selectedSubCategoryId === String(category.id) ? '' : String(category.id));
           }}
         >
-          <span className="flex-1 truncate">{category.name} {category.count !== undefined ? `(${category.count})` : ''}</span>
+          <span className="flex-1 truncate">
+            <DynamicText text={category.name} />
+            {category.count !== undefined ? ` (${category.count})` : ''}
+          </span>
           {category.children && category.children.length > 0 && (
             <ChevronDown 
               className={`ml-2 w-4 h-4 transform transition-transform duration-200 flex-shrink-0 ${expandedMobileCategories[category.id] ? 'rotate-180' : ''}`}
@@ -707,9 +719,9 @@ export const CategorySpecificPage = (): JSX.Element => {
           {/* Filter Bar (Desktop) - Simplified: No category filter needed */}
           <div className="hidden md:flex flex-row items-center justify-between mb-0 pl-[5px] py-2 md:px-[45px]" style={{ minHeight: 48 }}>
             <div className="flex flex-row items-center space-x-8">
-              <FilterDropdown label="РАЗМЕР" options={allSizes} selected={selectedSize} onSelect={setSelectedSize} id="size-csp" alignRight />
+              <FilterDropdown label={t('common.size').toUpperCase()} options={allSizes} selected={selectedSize} onSelect={setSelectedSize} id="size-csp" alignRight />
               <FilterDropdown 
-                label="ЦВЕТ" 
+                label={t('common.color').toUpperCase()} 
                 options={allColorsForCategory}
                 selected={selectedColor} 
                 onSelect={setSelectedColor} 
@@ -718,7 +730,7 @@ export const CategorySpecificPage = (): JSX.Element => {
                 activeOptions={currentlyAvailableColors}
               />
               <FilterDropdown 
-                label="Категория"
+                label={t('nav.category')}
                 categoryItems={subCategoriesForFilter}
                 selected={selectedSubCategoryId} 
                 onSelect={setSelectedSubCategoryId}
@@ -729,9 +741,9 @@ export const CategorySpecificPage = (): JSX.Element => {
               />
             </div>
             <div className="flex items-center">
-              <FilterDropdown label="Сортировать" options={['Цена: по возрастанию', 'Цена: по убыванию']}
-                selected={sortOrder === 'price_asc' ? 'Цена: по возрастанию' : sortOrder === 'price_desc' ? 'Цена: по убыванию' : ''}
-                onSelect={(val) => setSortOrder(val === 'Цена: по возрастанию' ? 'price_asc' : val === 'Цена: по убыванию' ? 'price_desc' : '')}
+              <FilterDropdown label={t('common.sort')} options={[t('common.priceAscending'), t('common.priceDescending')]}
+                selected={sortOrder === 'price_asc' ? t('common.priceAscending') : sortOrder === 'price_desc' ? t('common.priceDescending') : ''}
+                onSelect={(val) => setSortOrder(val === t('common.priceAscending') ? 'price_asc' : val === t('common.priceDescending') ? 'price_desc' : '')}
                 id="sort-csp"
               />
             </div>
@@ -757,12 +769,18 @@ export const CategorySpecificPage = (): JSX.Element => {
           {/* Mobile Filter/Sort Bar - Simplified */}
           <div className="flex md:hidden flex-row items-center justify-between mb-0 py-2" style={{ minHeight: 48 }}>
             <button className="flex items-center pl-6 py-2 text-xs font-bold uppercase tracking-wider" onClick={() => setIsFilterDrawerOpen(true)}>
-              Фильтры <FilterIcon className="ml-2 w-4 h-4" />
+                {t('common.filters')} <FilterIcon className="ml-2 w-4 h-4" />
             </button>
             <div className="flex items-center pr-6">
-               <FilterDropdown label="Сортировать" options={['Цена: по возрастанию', 'Цена: по убыванию']}
-                selected={sortOrder === 'price_asc' ? 'Цена: по возрастанию' : sortOrder === 'price_desc' ? 'Цена: по убыванию' : ''}
-                onSelect={(val) => setSortOrder(val === 'Цена: по возрастанию' ? 'price_asc' : val === 'Цена: по убыванию' ? 'price_desc' : '')}
+               <FilterDropdown 
+                label={t('common.sort')} 
+                options={[t('common.priceAscending'), t('common.priceDescending')]}
+                selected={sortOrder === 'price_asc' ? t('common.priceAscending') : sortOrder === 'price_desc' ? t('common.priceDescending') : ''}
+                onSelect={(val) => {
+                  if (val === t('common.priceAscending')) setSortOrder('price_asc');
+                  else if (val === t('common.priceDescending')) setSortOrder('price_desc');
+                  else setSortOrder('');
+                }}
                 id="sort-mobile-csp"
               />
             </div>
@@ -774,7 +792,7 @@ export const CategorySpecificPage = (): JSX.Element => {
           <div className={`fixed inset-y-0 left-0 w-[80vw] max-w-[400px] bg-white transform transition-transform duration-300 ease-in-out z-50 ${isFilterDrawerOpen ? 'translate-x-0' : '-translate-x-full'} ${isFilterDrawerOpen ? '' : 'pointer-events-none'}`}>
             <div className="flex justify-end p-2"><button onClick={() => setIsFilterDrawerOpen(false)}><X size={20} /></button></div>
             <div className="px-4 pb-4 flex flex-col h-full">
-              <span className="text-base font-bold uppercase mb-2">Фильтры для {currentCategory?.name}</span>
+              <span className="text-base font-bold uppercase mb-2">{t('common.filtersFor')} {currentCategory?.name ? <DynamicText text={currentCategory.name} tag="span" /> : ''}</span>
               <div className="w-full h-px bg-gray-200 mb-2" />
               <SelectedFiltersDisplay 
                 selectedSize={selectedSize} 
@@ -792,12 +810,12 @@ export const CategorySpecificPage = (): JSX.Element => {
               <div className="flex flex-col gap-1 flex-1 overflow-y-auto">
                 {/* Size */}
                 <div>
-                  <button className="w-full flex justify-between items-center py-2 font-bold uppercase text-xs border-b" onClick={() => setMobileFilterDropdown(m => m === 'size' ? null : 'size')}>Размер{selectedSize && ` (${selectedSize})`}<ChevronDown className={`transition-transform ${mobileFilterDropdown === 'size' ? 'rotate-180' : ''}`} /></button>
+                  <button className="w-full flex justify-between items-center py-2 font-bold uppercase text-xs border-b" onClick={() => setMobileFilterDropdown(m => m === 'size' ? null : 'size')}>{t('common.size')}{selectedSize && ` (${selectedSize})`}<ChevronDown className={`transition-transform ${mobileFilterDropdown === 'size' ? 'rotate-180' : ''}`} /></button>
                   {mobileFilterDropdown === 'size' && <div className="flex flex-wrap gap-1 mt-1 px-1 pb-1">{allSizes.map(s => <button key={s} className={`border px-2 py-1 rounded text-xs ${selectedSize === s ? 'bg-black text-white' : ''}`} onClick={() => setSelectedSize(sz => sz === s ? '' : s)}>{s}</button>)}</div>}
                 </div>
                 {/* Color */}
                 <div>
-                  <button className="w-full flex justify-between items-center py-2 font-bold uppercase text-xs border-b" onClick={() => setMobileFilterDropdown(m => m === 'color' ? null : 'color')}>Цвет{selectedColor && ` (${selectedColor})`}<ChevronDown className={`transition-transform ${mobileFilterDropdown === 'color' ? 'rotate-180' : ''}`} /></button>
+                  <button className="w-full flex justify-between items-center py-2 font-bold uppercase text-xs border-b" onClick={() => setMobileFilterDropdown(m => m === 'color' ? null : 'color')}>{t('common.color')}{selectedColor && ` (${selectedColor})`}<ChevronDown className={`transition-transform ${mobileFilterDropdown === 'color' ? 'rotate-180' : ''}`} /></button>
                   {mobileFilterDropdown === 'color' && (
                     <div className="flex flex-wrap gap-2 mt-1 px-1 pb-1">
                       {allColorsForCategory.map(color => {
@@ -826,7 +844,7 @@ export const CategorySpecificPage = (): JSX.Element => {
                 <div>
                   <button className="w-full flex justify-between items-center py-2 font-bold uppercase text-xs border-b" 
                     onClick={() => setMobileFilterDropdown(m => m === 'style' ? null : 'style')}>
-                    Категория {selectedSubCategoryId && subCategoriesForFilter.flatMap(sc => sc.children ? [sc, ...sc.children] : [sc]).find(sc => String(sc.id) === selectedSubCategoryId)?.name ? ` (${subCategoriesForFilter.flatMap(sc => sc.children ? [sc, ...sc.children] : [sc]).find(sc => String(sc.id) === selectedSubCategoryId)?.name})` : ''}
+                    {t('nav.category')} {selectedSubCategoryId && subCategoriesForFilter.flatMap(sc => sc.children ? [sc, ...sc.children] : [sc]).find(sc => String(sc.id) === selectedSubCategoryId)?.name ? ` (${subCategoriesForFilter.flatMap(sc => sc.children ? [sc, ...sc.children] : [sc]).find(sc => String(sc.id) === selectedSubCategoryId)?.name})` : ''}
                     <ChevronDown className={`transition-transform ${mobileFilterDropdown === 'style' ? 'rotate-180' : ''}`} />
                   </button>
                   {mobileFilterDropdown === 'style' && (
@@ -836,15 +854,15 @@ export const CategorySpecificPage = (): JSX.Element => {
                         onClick={() => {
                           setSelectedSubCategoryId('');
                         }}>
-                        Все подкатегории ({currentCategory?.name})
+                        {t('common.allSubcategories')} ({currentCategory?.name})
                         </button>
                       {renderMobileCategoryItems(subCategoriesForFilter)}
                     </div>
                   )}
                 </div>
               </div>
-              <button className="mt-6 w-full bg-black text-white py-3 font-bold uppercase tracking-wider text-xs rounded" onClick={() => setIsFilterDrawerOpen(false)}>Показать {sortedAndFilteredProducts.length} результатов</button>
-              <button className="mt-2 w-full text-center text-black underline text-xs" onClick={() => {setSelectedSize(''); setSelectedColor(''); setSelectedSubCategoryId('');}}>Очистить все</button>
+              <button className="mt-6 w-full bg-black text-white py-3 font-bold uppercase tracking-wider text-xs rounded" onClick={() => setIsFilterDrawerOpen(false)}>{t('common.showResults').replace('{count}', sortedAndFilteredProducts.length.toString())}</button>
+              <button className="mt-2 w-full text-center text-black underline text-xs" onClick={() => {setSelectedSize(''); setSelectedColor(''); setSelectedSubCategoryId('');}}>{t('common.clearAll')}</button>
             </div>
           </div>
 
@@ -880,19 +898,28 @@ export const CategorySpecificPage = (): JSX.Element => {
                                 }}
                               />
                             ) : (
-                              <img src={product.imageSrc || '/placeholder.png'} alt={product.name} className="w-full h-full object-cover" loading="lazy" />
+                              <ProxiedImage
+                                src={product.imageSrc || '/placeholder.png'}
+                                alt={product.name}
+                                className="w-full h-full object-cover"
+                                loading="lazy"
+                              />
                             )}
                           </div>
                         </Link>
                         <div className="mt-2 pl-2 pr-2 pb-2 md:pl-3 md:pr-3 md:pb-3">
                           <Link to={productLink} state={{ parentProductId: product.parentId, selectedColor: product.selectedColorOption, productData: product }} className="block">
                             <div className="flex items-center justify-between w-full">
-                              <h3 className="font-sans text-xs md:text-sm font-normal text-black">{product.name}</h3>
+                              <DynamicText 
+                                text={product.name}
+                                tag="h3"
+                                className="font-sans text-xs md:text-sm font-normal text-black"
+                              />
                               <button className="ml-2 p-1 text-gray-500 hover:text-red-600" aria-label="Like" onClick={e => { e.preventDefault(); toggleLike(product.variationId || product.parentId, { id: product.variationId || product.parentId, parentId: product.parentId, name: product.name, price: product.price, images: [{ src: product.imageSrc }] }); }}>
                                 <Heart size={20} fill={likedProducts.includes(product.variationId || product.parentId) ? 'black' : 'none'} stroke={likedProducts.includes(product.variationId || product.parentId) ? 'black' : 'currentColor'} />
                               </button>
                             </div>
-                            <p className="font-sans text-xs text-black">{product.price} RUB</p>
+                            <p className="font-sans text-xs text-black">{convertAndFormatPrice(product.price)}</p>
                           </Link>
                           <div className="mt-2 flex items-center space-x-1">
                             {(product.allColorOptions || []).map(color => (
@@ -910,7 +937,7 @@ export const CategorySpecificPage = (): JSX.Element => {
             )}
           </div>
           <div className="w-full flex flex-col items-center py-6">
-            <p className="font-sans font-normal text-black text-sm text-center">Показано {sortedAndFilteredProducts.length} товаров</p>
+                            <p className="font-sans font-normal text-black text-sm text-center">{t('common.showingProducts').replace('{count}', sortedAndFilteredProducts.length.toString())}</p>
             {/* {currentCategory && <Link to="/catalogue" className="text-sm underline mt-2">View all products</Link>} */}
           </div>
         </div>

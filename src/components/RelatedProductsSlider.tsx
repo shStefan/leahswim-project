@@ -3,6 +3,8 @@ import { Link } from 'react-router-dom';
 import { Heart } from 'lucide-react';
 import { useLikes } from '../context/LikesContext'; 
 import { ProductCardSkeleton } from './ProductCardSkeleton';
+import { DynamicText } from './DynamicText';
+import { convertAndFormatPrice } from '../utils/priceUtils';
 
 interface ProductImage {
   id: number;
@@ -84,9 +86,13 @@ export const RelatedProductsSlider: React.FC<RelatedProductsSliderProps> = ({ pr
                     </button> */}
                   </div>
                   <div className="mt-3">
-                    <h3 className="text-sm font-medium text-gray-900 truncate group-hover:underline">{product.name}</h3>
+                    <DynamicText 
+                      text={product.name}
+                      tag="h3"
+                      className="text-sm font-medium text-gray-900 truncate group-hover:underline"
+                    />
                     <p className="mt-1 text-sm text-gray-700">
-                      {product.price ? `₽${parseInt(product.price)}` : 'N/A'}
+                      {product.price ? convertAndFormatPrice(product.price) : 'N/A'}
                     </p>
                   </div>
                 </Link>

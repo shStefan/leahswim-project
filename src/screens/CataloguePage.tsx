@@ -5,6 +5,12 @@ import { useLikes } from '../context/LikesContext';
 import { useCart } from '../context/CartContext';
 import { ProductCardSkeleton } from '../components/ProductCardSkeleton';
 import SelectedFiltersDisplay from '../components/SelectedFiltersDisplay';
+import { ProxiedImage } from '../components/ProxiedImage';
+import { DynamicText } from '../components/DynamicText';
+import { useTranslation } from '../context/TranslationContext';
+import { convertAndFormatPrice } from '../utils/priceUtils';
+import { LoadingWrapper } from '../components/LoadingWrapper';
+import { apiEndpoints } from '../utils/apiConfig';
 
 // Navigation items
 const navItems = [
@@ -73,6 +79,7 @@ interface DisplayableProduct {
 export const CataloguePage = (): JSX.Element => {
   const [isMenuOpen, setIsMenuOpen] = useState(false);
   const [isFilterDrawerOpen, setIsFilterDrawerOpen] = useState(false);
+  const { t } = useTranslation();
   const [displayableProducts, setDisplayableProducts] = useState<DisplayableProduct[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [hierarchicalCategories, setHierarchicalCategories] = useState<Category[]>([]);
@@ -92,10 +99,6 @@ export const CataloguePage = (): JSX.Element => {
   const { categorySlug: categorySlugFromPath } = useParams<{ categorySlug?: string }>();
   const [sortOrder, setSortOrder] = useState<string>('');
 
-  // WooCommerce API credentials
-  const WC_CONSUMER_KEY = 'ck_c2758a311f98c4c5a4e44b85a5a66eae4a0581c3';
-  const WC_CONSUMER_SECRET = 'cs_7b0d34c68e68a5ae5cebf19a6d23338ab83de571';
-  const WC_API_URL = 'https://zdqksnii.elementor.cloud/wp-json/wc/v3';
 
   // Moved getColorHex function to a higher scope to be accessible by all parts of the component
   const getColorHex = (colorName: string) => {
@@ -350,7 +353,8 @@ export const CataloguePage = (): JSX.Element => {
 
   // Fetch categories on mount
   useEffect(() => {
-    fetch(`${WC_API_URL}/products/categories?per_page=100&consumer_key=${WC_CONSUMER_KEY}&consumer_secret=${WC_CONSUMER_SECRET}`)
+    const { url, options } = apiEndpoints.categories('per_page=100');
+    fetch(url, options)
       .then(res => {
         if (!res.ok) {
           throw new Error(`Failed to fetch categories: ${res.status}`);
@@ -383,13 +387,13 @@ export const CataloguePage = (): JSX.Element => {
 
     const fetchProductsAndVariations = async () => {
       try {
-        let productsApiUrl = `${WC_API_URL}/products?per_page=100&consumer_key=${WC_CONSUMER_KEY}&consumer_secret=${WC_CONSUMER_SECRET}&status=publish`;
+        let productsParams = 'per_page=100&status=publish';
         
         // selectedCategory should now be an ID if categorySlugFromPath was valid and categories loaded.
         if (selectedCategory && categories.length > 0) {
           const categoryExists = categories.some(cat => String(cat.id) === selectedCategory);
           if (categoryExists) {
-            productsApiUrl += `&category=${selectedCategory}`;
+            productsParams += `&category=${selectedCategory}`;
             console.log(`Fetching products for category ID: ${selectedCategory} (from path or selection)`);
           } else {
             // This case should ideally not be hit if selectedCategory is set carefully after slug resolution.
@@ -402,10 +406,11 @@ export const CataloguePage = (): JSX.Element => {
         }
         // If no selectedCategory ID (e.g. no slug in path, or slug was invalid), fetch all products.
 
-        console.log('Final products API URL:', productsApiUrl);
+        console.log('Final products API params:', productsParams);
 
         // 1. Fetch base products
-        const productsResponse = await fetch(productsApiUrl);
+        const { url: productsUrl, options: productsOptions } = apiEndpoints.products(productsParams);
+        const productsResponse = await fetch(productsUrl, productsOptions);
         if (!productsResponse.ok) {
           const errorText = await productsResponse.text();
           throw new Error(`Failed to fetch products: ${productsResponse.status} ${productsResponse.statusText}. ${errorText}`);
@@ -434,7 +439,8 @@ export const CataloguePage = (): JSX.Element => {
 
           if (product.type === 'variable' && product.variations && product.variations.length > 0) {
             try {
-              const variationsResponse = await fetch(`${WC_API_URL}/products/${product.id}/variations?consumer_key=${WC_CONSUMER_KEY}&consumer_secret=${WC_CONSUMER_SECRET}&per_page=100`);
+              const { url: variationsUrl, options: variationsOptions } = apiEndpoints.variations(String(product.id), 'per_page=100');
+              const variationsResponse = await fetch(variationsUrl, variationsOptions);
               if (!variationsResponse.ok) {
                 console.warn(`Failed to fetch variations for product ${product.id}: ${variationsResponse.status}. Skipping this product's variations.`);
                 processedDisplayableProducts.push({
@@ -606,7 +612,7 @@ export const CataloguePage = (): JSX.Element => {
         fetchProductsAndVariations(); // Or handle error: setError("Invalid category specified in URL"); setLoading(false);
     }
 
-  }, [selectedCategory, categories, categorySlugFromPath, WC_API_URL, WC_CONSUMER_KEY, WC_CONSUMER_SECRET]); // Updated dependencies
+  }, [selectedCategory, categories, categorySlugFromPath]); // Updated dependencies
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -690,7 +696,10 @@ export const CataloguePage = (): JSX.Element => {
               paddingLeft: `${1 + level * 0.75}rem`,
             }}
           >
-            <span>{category.name} {category.count !== undefined ? `(${category.count})` : ''}</span>
+            <span>
+              <DynamicText text={category.name} />
+              {category.count !== undefined ? ` (${category.count})` : ''}
+            </span>
             {level === 0 && category.children && category.children.length > 0 && (
               <ChevronDown 
                 className={`ml-2 w-4 h-4 transform transition-transform duration-200 flex-shrink-0 ${expandedParentId === category.id ? 'rotate-180' : ''}`}
@@ -737,7 +746,7 @@ export const CataloguePage = (): JSX.Element => {
               onClick={() => { onSelect(''); setOpenDropdown(null); }}
               style={{ fontWeight: !selected ? 'bold' : 'normal' }}
             >
-              Все
+              {t('common.all')}
             </div>
 
             {id === 'color' ? (
@@ -790,7 +799,10 @@ export const CataloguePage = (): JSX.Element => {
             // setMobileFilterDropdown(null);
           }}
         >
-          <span className="flex-1 truncate">{category.name} {category.count !== undefined ? `(${category.count})` : ''}</span>
+          <span className="flex-1 truncate">
+            <DynamicText text={category.name} />
+            {category.count !== undefined ? ` (${category.count})` : ''}
+          </span>
           {category.children && category.children.length > 0 && (
             <ChevronDown 
               className={`ml-2 w-4 h-4 transform transition-transform duration-200 flex-shrink-0 ${expandedMobileCategories[category.id] ? 'rotate-180' : ''}`}
@@ -809,7 +821,8 @@ export const CataloguePage = (): JSX.Element => {
   const skeletonDelays = ['delay-0', 'delay-100', 'delay-200', 'delay-300', 'delay-400', 'delay-500'];
 
   return (
-    <div className="bg-white flex flex-row justify-center w-full">
+    <LoadingWrapper isContentLoading={loading} showSkeleton={true}>
+      <div className="bg-white flex flex-row justify-center w-full">
       <div className="bg-white w-full relative">
         <div className="w-full">
           {/* Header REMOVED - Now uses global header from App.tsx */}
@@ -825,9 +838,11 @@ export const CataloguePage = (): JSX.Element => {
                       alt={category.name}
                       className="h-[60px] md:h-[120px] object-contain"
                     />
-                    <p className="font-sans mt-3 font-normal text-[#000000d9] text-xs md:text-sm tracking-[0] leading-[18px] text-center">
-                      {category.name}
-                    </p>
+                    <DynamicText 
+                      text={category.name}
+                      tag="p"
+                      className="font-sans mt-3 font-normal text-[#000000d9] text-xs md:text-sm tracking-[0] leading-[18px] text-center"
+                    />
                   </div>
                 ))}
               </div>
@@ -840,7 +855,7 @@ export const CataloguePage = (): JSX.Element => {
               {/* Filters on the left */}
               <div className="flex flex-row items-center space-x-8">
                 <FilterDropdown
-                  label="РАЗМЕР"
+                  label={t('common.size').toUpperCase()}
                   options={allSizes}
                   selected={selectedSize}
                   onSelect={val => { console.log('Selected size:', val); setSelectedSize(val); }}
@@ -848,7 +863,7 @@ export const CataloguePage = (): JSX.Element => {
                   alignRight
                 />
                 <FilterDropdown
-                  label="ЦВЕТ"
+                  label={t('common.color').toUpperCase()}
                   options={allColors}
                   selected={selectedColor}
                   onSelect={val => { console.log('Selected color:', val); setSelectedColor(val); }}
@@ -856,7 +871,7 @@ export const CataloguePage = (): JSX.Element => {
                   alignRight
                 />
                 <FilterDropdown
-                  label="Категория"
+                  label={t('nav.category')}
                   categoryItems={hierarchicalCategories}
                   selected={selectedCategory}
                   onSelect={val => {
@@ -874,12 +889,12 @@ export const CataloguePage = (): JSX.Element => {
               {/* Sort button on the right */}
               <div className="flex items-center">
                 <FilterDropdown
-                  label="Сортировать"
-                  options={['Цена: по возрастанию', 'Цена: по убыванию']}
-                  selected={sortOrder === 'price_asc' ? 'Цена: по возрастанию' : sortOrder === 'price_desc' ? 'Цена: по убыванию' : ''}
+                  label={t('common.sort')}
+                  options={[t('common.priceAscending'), t('common.priceDescending')]}
+                  selected={sortOrder === 'price_asc' ? t('common.priceAscending') : sortOrder === 'price_desc' ? t('common.priceDescending') : ''}
                   onSelect={(val) => {
-                    if (val === 'Цена: по возрастанию') setSortOrder('price_asc');
-                    else if (val === 'Цена: по убыванию') setSortOrder('price_desc');
+                    if (val === t('common.priceAscending')) setSortOrder('price_asc');
+                    else if (val === t('common.priceDescending')) setSortOrder('price_desc');
                     else setSortOrder(''); // Corresponds to "Все"
                   }}
                   id="sort"
@@ -911,17 +926,17 @@ export const CataloguePage = (): JSX.Element => {
                 className="flex items-center pl-6 py-2 text-xs font-bold uppercase tracking-wider bg-transparent"
                 onClick={() => setIsFilterDrawerOpen(true)}
               >
-                Фильтры
+                {t('common.filters')}
                 <FilterIcon className="ml-2 w-4 h-4" />
               </button>
               <div className="flex items-center pr-6">
                 <FilterDropdown
-                  label="Сортировать"
-                  options={['Цена: по возрастанию', 'Цена: по убыванию']}
-                  selected={sortOrder === 'price_asc' ? 'Цена: по возрастанию' : sortOrder === 'price_desc' ? 'Цена: по убыванию' : ''}
+                  label={t('common.sort')}
+                  options={[t('common.priceAscending'), t('common.priceDescending')]}
+                  selected={sortOrder === 'price_asc' ? t('common.priceAscending') : sortOrder === 'price_desc' ? t('common.priceDescending') : ''}
                   onSelect={(val) => {
-                    if (val === 'Цена: по возрастанию') setSortOrder('price_asc');
-                    else if (val === 'Цена: по убыванию') setSortOrder('price_desc');
+                    if (val === t('common.priceAscending')) setSortOrder('price_asc');
+                    else if (val === t('common.priceDescending')) setSortOrder('price_desc');
                     else setSortOrder(''); // Corresponds to "Все"
                   }}
                   id="sort-mobile"
@@ -953,7 +968,7 @@ export const CataloguePage = (): JSX.Element => {
                   </button>
                 </div>
                 <div className="px-4 pb-4 flex flex-col h-full">
-                  <span className="text-base font-bold uppercase mb-2">Фильтры</span>
+                  <span className="text-base font-bold uppercase mb-2">{t('common.filters')}</span>
                   <div className="w-full h-px bg-gray-200 mb-2" />
                   <SelectedFiltersDisplay
                     selectedSize={selectedSize}
@@ -970,7 +985,7 @@ export const CataloguePage = (): JSX.Element => {
                     {/* Size Dropdown */}
                     <div>
                       <button className="w-full flex justify-between items-center py-2 font-bold uppercase text-xs border-b border-gray-100" onClick={() => setMobileFilterDropdown(mobileFilterDropdown === 'size' ? null : 'size')}>
-                        Размер{selectedSize ? ` (${selectedSize})` : ''}
+                        {t('common.size')}{selectedSize ? ` (${selectedSize})` : ''}
                         <ChevronDown className={`ml-2 w-4 h-4 transition-transform ${mobileFilterDropdown === 'size' ? 'rotate-180' : ''}`} />
                       </button>
                       {mobileFilterDropdown === 'size' && (
@@ -990,7 +1005,7 @@ export const CataloguePage = (): JSX.Element => {
                     {/* Colour Dropdown */}
                     <div>
                       <button className="w-full flex justify-between items-center py-2 font-bold uppercase text-xs border-b border-gray-100" onClick={() => setMobileFilterDropdown(mobileFilterDropdown === 'color' ? null : 'color')}>
-                        Цвет{selectedColor ? ` (${selectedColor})` : ''}
+                        {t('common.color')}{selectedColor ? ` (${selectedColor})` : ''}
                         <ChevronDown className={`ml-2 w-4 h-4 transition-transform ${mobileFilterDropdown === 'color' ? 'rotate-180' : ''}`} />
                       </button>
                       {mobileFilterDropdown === 'color' && (
@@ -1012,7 +1027,7 @@ export const CataloguePage = (): JSX.Element => {
                     {/* Style Dropdown */}
                     <div>
                       <button className="w-full flex justify-between items-center py-2 font-bold uppercase text-xs border-b border-gray-100" onClick={() => setMobileFilterDropdown(mobileFilterDropdown === 'style' ? null : 'style')}>
-                        Категория{hierarchicalCategories.find((cat: Category) => cat.id === parseInt(selectedCategory))?.name ? ` (${hierarchicalCategories.find((cat: Category) => cat.id === parseInt(selectedCategory))?.name})` : ''}
+                        {t('nav.category')}{hierarchicalCategories.find((cat: Category) => cat.id === parseInt(selectedCategory))?.name ? ` (${hierarchicalCategories.find((cat: Category) => cat.id === parseInt(selectedCategory))?.name})` : ''}
                         <ChevronDown className={`ml-2 w-4 h-4 transition-transform ${mobileFilterDropdown === 'style' ? 'rotate-180' : ''}`} />
                       </button>
                       {mobileFilterDropdown === 'style' && (
@@ -1025,7 +1040,7 @@ export const CataloguePage = (): JSX.Element => {
                               // setMobileFilterDropdown(null);
                             }}
                             >
-                            Все категории
+                            {t('common.allCategories')}
                             </button>
                           {renderMobileCategoryItems(hierarchicalCategories)}
                         </div>
@@ -1037,13 +1052,13 @@ export const CataloguePage = (): JSX.Element => {
                     className="mt-6 w-full bg-black text-white py-3 font-bold uppercase tracking-wider text-xs rounded"
                     onClick={() => setIsFilterDrawerOpen(false)}
                   >
-                    Показать {filteredProducts.length} результатов
+                    {t('common.showResults').replace('{count}', filteredProducts.length.toString())}
                   </button>
                   <button
                     className="mt-2 w-full text-center text-black underline text-xs"
                     onClick={() => { setSelectedSize(''); setSelectedColor(''); setSelectedCategory(''); }}
                   >
-                    Очистить все
+                    {t('common.clearAll')}
                   </button>
                 </div>
               </div>
@@ -1098,8 +1113,8 @@ export const CataloguePage = (): JSX.Element => {
                             className="block"
                           >
                             <div className="aspect-[3/4] overflow-hidden bg-gray-100 w-full h-full">
-                              <img
-                                src={product.imageSrc || '/placeholder.png'} // Directly use imageSrc
+                              <ProxiedImage
+                                src={product.imageSrc || '/placeholder.png'}
                                 alt={product.name}
                                 className="w-full h-full object-cover"
                                 style={{ display: 'block' }}
@@ -1118,9 +1133,11 @@ export const CataloguePage = (): JSX.Element => {
                               className="block"
                             >
                               <div className="flex items-center justify-between w-full">
-                                <h3 className="font-sans text-xs md:text-sm font-normal text-black">
-                                  {product.name}
-                                </h3>
+                                <DynamicText 
+                                  text={product.name}
+                                  tag="h3"
+                                  className="font-sans text-xs md:text-sm font-normal text-black"
+                                />
                                 {/* Heart Icon for Likes */}
                                   <button
                                     className="ml-2 p-1 text-gray-500 hover:text-red-600 flex-shrink-0"
@@ -1144,7 +1161,7 @@ export const CataloguePage = (): JSX.Element => {
                                   />
                                   </button>
                                 </div>
-                              <p className="font-sans text-xs text-black">{product.price ? `${product.price} RUB` : 'Price not available'}</p>
+                              <p className="font-sans text-xs text-black">{product.price ? convertAndFormatPrice(product.price) : 'Price not available'}</p>
                             </Link>
                               {/* Color Swatches */}
                             <div className="mt-2 flex items-center space-x-1">
@@ -1174,7 +1191,7 @@ export const CataloguePage = (): JSX.Element => {
             {/* Product count */}
             <div className="w-full flex flex-col items-center py-6">
               <p className="font-sans font-normal text-black text-sm text-center">
-                Показано {sortedAndFilteredProducts.length} товаров
+                {t('common.showingProducts').replace('{count}', sortedAndFilteredProducts.length.toString())}
               </p>
             </div>
           </div>
@@ -1210,7 +1227,7 @@ export const CataloguePage = (): JSX.Element => {
                 return (
                   <div key={id}>
                     <div className="flex items-center gap-4 py-2">
-                      <img 
+                      <ProxiedImage 
                         src={cachedProduct.images?.[0]?.src || '/placeholder.png'} 
                         alt={cachedProduct.name} 
                         className="w-12 h-12 object-cover rounded-lg border" 
@@ -1226,7 +1243,7 @@ export const CataloguePage = (): JSX.Element => {
                             <Heart className="w-5 h-5" style={{ fill: 'black', stroke: 'black' }} />
                           </button>
                         </div>
-                        <span className="text-xs text-gray-600">{cachedProduct.price ? `₽${cachedProduct.price}` : 'Price not available'}</span>
+                        <span className="text-xs text-gray-600">{cachedProduct.price ? convertAndFormatPrice(cachedProduct.price) : 'Price not available'}</span>
                       </div>
                     </div>
                     {id !== likedProducts[likedProducts.length - 1] && <div className="w-full h-px bg-gray-200 my-1" />}
@@ -1238,5 +1255,6 @@ export const CataloguePage = (): JSX.Element => {
         </div>
       </div>
     </div>
+    </LoadingWrapper>
   );
 };

@@ -1,5 +1,6 @@
 import React from 'react';
 import { X } from 'lucide-react';
+import { useTranslation } from '../context/TranslationContext';
 
 interface PublicOfferModalProps {
   isOpen: boolean;
@@ -7,6 +8,7 @@ interface PublicOfferModalProps {
 }
 
 const PublicOfferModal: React.FC<PublicOfferModalProps> = ({ isOpen, onClose }) => {
+  const { t } = useTranslation();
   if (!isOpen) return null;
 
   return (
@@ -25,7 +27,7 @@ const PublicOfferModal: React.FC<PublicOfferModalProps> = ({ isOpen, onClose }) 
         >
           <X size={24} />
         </button>
-        <h2 className="text-2xl font-bold mb-6 text-center">Публичная оферта</h2>
+        <h2 className="text-2xl font-bold mb-6 text-center">{t('footer.offer')}</h2>
         <div className="space-y-4 text-sm text-gray-700">
             <p><strong>(о продаже товаров дистанционным способом)</strong></p>
             <p><strong>1. Термины и определения.</strong></p>

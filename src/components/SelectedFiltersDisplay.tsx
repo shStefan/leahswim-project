@@ -1,4 +1,6 @@
 import React from 'react';
+import { DynamicText } from './DynamicText';
+import { useTranslation } from '../context/TranslationContext';
 
 interface Category {
   id: number;
@@ -96,6 +98,7 @@ const SelectedFiltersDisplay: React.FC<SelectedFiltersDisplayProps> = ({
   onClearSubCategory,
   onClearAll,
 }) => {
+  const { t } = useTranslation();
   const mainCategoryDetails = categories.find((cat) => String(cat.id) === selectedCategory);
   
   // Determine the name of the selected sub-category.
@@ -130,7 +133,7 @@ const SelectedFiltersDisplay: React.FC<SelectedFiltersDisplayProps> = ({
         <button
           onClick={onClearSize}
           className="flex items-center text-xs border border-gray-200 rounded px-2 py-1 bg-white hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-gray-300"
-          aria-label={`Очистить размер ${selectedSize}`}
+          aria-label={`${t('common.clearSize')} ${selectedSize}`}
         >
           <span className="mr-1">×</span>
           <span>{selectedSize}</span>
@@ -140,7 +143,7 @@ const SelectedFiltersDisplay: React.FC<SelectedFiltersDisplayProps> = ({
         <button
           onClick={onClearColor}
           className="flex items-center text-xs border border-gray-200 rounded px-2 py-1 bg-white hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-gray-300"
-          aria-label={`Очистить цвет ${selectedColor}`}
+          aria-label={`${t('common.clearColor')} ${selectedColor}`}
           title={selectedColor}
         >
           <span className="mr-1">×</span>
@@ -156,10 +159,10 @@ const SelectedFiltersDisplay: React.FC<SelectedFiltersDisplayProps> = ({
          <button
             onClick={onClearCategory}
             className="flex items-center text-xs border border-gray-200 rounded px-2 py-1 bg-white hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-gray-300"
-            aria-label={`Очистить основную категорию ${mainCategoryDetails.name}`}
+            aria-label={`${t('common.clearMainCategory')} ${mainCategoryDetails.name}`}
           >
             <span className="mr-1">×</span>
-            <span>{mainCategoryDetails.name}</span>
+                          <DynamicText text={mainCategoryDetails.name} />
         </button>
       )} */}
       {/* Display Selected Sub-Category if one is active */}
@@ -167,17 +170,17 @@ const SelectedFiltersDisplay: React.FC<SelectedFiltersDisplayProps> = ({
         <button
           onClick={onClearSubCategory}
           className="flex items-center text-xs border border-gray-200 rounded px-2 py-1 bg-white hover:border-gray-300 focus:outline-none focus:ring-1 focus:ring-gray-300"
-          aria-label={`Очистить подкатегорию ${selectedSubCategoryName}`}
+          aria-label={`${t('common.clearSubCategory')} ${selectedSubCategoryName}`}
         >
           <span className="mr-1">×</span>
-          <span>{selectedSubCategoryName}</span>
+                        <DynamicText text={selectedSubCategoryName} />
         </button>
       )}
       <button
         className="text-xs text-gray-400 hover:text-black ml-1 underline"
         onClick={onClearAll}
       >
-        Очистить все
+                  {t('common.clearAll')}
       </button>
     </div>
   );

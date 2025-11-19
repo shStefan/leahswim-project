@@ -1,29 +1,47 @@
 import React from 'react';
+import { useTranslation } from '../context/TranslationContext';
 
-const contactInfo = [
-  {
-    label: 'Телефон',
-    value: '+7 (926) 879-28-78',
-    href: 'tel:+79268792878',
-  },
-  {
-    label: 'Мы находимся',
-    value: 'Москва, Большая Бронная, 9/1',
-    href: 'https://yandex.ru/maps/?text=Москва, Большая Бронная, 9/1', // Example map link
-  },
-  {
-    label: 'Для оптовых заказов продукции LÉAH',
-    value: 'sales@leahcation.com',
-    href: 'mailto:sales@leahcation.com',
-  },
-  {
-    label: 'Email',
-    value: 'info@leahcation.ru',
-    href: 'mailto:info@leahcation.ru',
-  },
-];
+const getContactInfo = (t: (key: string) => string, language: string) => {
+  if (language === 'en') {
+    // English version - only show email
+    return [
+      {
+        label: t('contact.email'),
+        value: 'info@leahcation.com',
+        href: 'mailto:info@leahcation.com',
+      },
+    ];
+  }
+  
+  // Russian version - show all contact information
+  return [
+    {
+      label: t('contact.phone'),
+      value: '+7 (926) 879-28-78',
+      href: 'tel:+79268792878',
+    },
+    {
+      label: t('contact.location'),
+      value: 'Moscow, ul. Novaya Basmannaya, 19bld1',
+      href: 'https://yandex.ru/maps/?text=г.Москва, ул. Новая Басманная, д.19стр1',
+    },
+    {
+      label: t('contact.wholesale'),
+      value: 'sales@leahcation.com',
+      href: 'mailto:sales@leahcation.com',
+    },
+    {
+      label: t('contact.email'),
+      value: 'info@leahcation.ru',
+      href: 'mailto:info@leahcation.ru',
+    },
+  ];
+};
 
 const ContactPage = () => {
+  const { t, language } = useTranslation();
+  const contactInfo = getContactInfo(t, language);
+  
   return (
     <main className="bg-white min-h-screen py-12 md:py-20 px-4 sm:px-6 lg:px-8">
       <div className="max-w-3xl mx-auto">
