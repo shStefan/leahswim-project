@@ -74,7 +74,7 @@
       "destination": "/index.html"
     },
     {
-      "source": "/((?!api|_next|_static|favicon.ico).*)",
+      "source": "/((?!api|_next|_static|favicon.ico|\\.well-known).*)",
       "destination": "/index.html"
     }
   ]
