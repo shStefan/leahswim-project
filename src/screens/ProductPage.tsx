@@ -845,26 +845,38 @@ export const ProductPage = (): JSX.Element => {
                         t('product.noDescription')
                       )
                     ) : section.contentKey === 'delivery' ? (
-                      <div>
-                        <p>{t('delivery.withinMKAD')}</p>
-                        <p>{t('delivery.outsideMKAD20')}</p>
-                        <p>{t('delivery.outsideMKADOver20')}</p>
-                        <br/>
-                        <p>{t('delivery.international')}</p>
-                        <br/>
-                        <p>{t('delivery.byPhone')}</p>
-                        <p>{t('delivery.byEmail')}</p>
+                      <div className="space-y-2 text-sm">
+                        <p>Worldwide shipping (7-14 business days)</p>
                       </div>
                     ) : section.contentKey === 'returns' ? (
-                      <div>
-                        <p>{t('returns.conditions')}</p>
-                        <br/>
-                        <p>{t('returns.toArrange')}</p>
-                        <br/>
-                        <p>{t('returns.byPhone')}</p>
-                        <p>{t('returns.byEmail')}</p>
-                        <br/>
-                        <p>{t('returns.law')}</p>
+                      <div className="space-y-4 text-sm">
+                        <div>
+                          <p className="font-semibold mb-2">Returns:</p>
+                          <p className="mb-3">We accept returns within 14 days, starting from the day your order was delivered.</p>
+                          <p className="mb-3">Kindly contact our customer service to program your return via email <a href="mailto:info@leahcation.com" className="text-blue-600 underline">info@leahcation.com</a> or by WhatsApp <a href="https://wa.me/33640613269" className="text-blue-600 underline">+33640613269</a> and we will assist you with your order return.</p>
+                        </div>
+                        
+                        <div>
+                          <p className="font-semibold mb-2">Returned items must comply with our returns policy:</p>
+                          <ul className="list-disc list-inside space-y-1 ml-2">
+                            <li>Items must be returned unworn, undamaged and unused, with all tags attached and the original packaging included</li>
+                            <li>Final sale items cannot be returned unless the item arrives damaged or faulty when delivered to you</li>
+                            <li>Footwear and accessories must be returned with the original branded boxes and dust bags, where provided, and placed inside a protective box when returned</li>
+                            <li>When trying on footwear, please do not mark the soles or damage the shoe box</li>
+                            <li>If an item has a security tag or brand tag attached, it must be returned with the tag in its original position</li>
+                            <li>Beauty and cosmetic products must be returned unopened and unused, with the seals of any packaging still intact</li>
+                            <li>Swimwear items must be returned with the hygiene seals attached and in unopened and undamaged packaging, where applicable</li>
+                            <li>Swimwear must only be tried on over your own undergarments. We will not accept any returns that have been worn or are soiled.</li>
+                            <li>Made-to-order items cannot be returned as they have been created to your specification, unless the item arrives damaged or faulty when delivered to you</li>
+                          </ul>
+                        </div>
+                        
+                        <p className="italic">Please be careful when trying on your purchases and return them in the same condition you received them. Any returns that do not meet our policy will not be accepted.</p>
+                        
+                        <div>
+                          <p className="font-semibold mb-2">Refunds:</p>
+                          <p>Once your return has been received, it can take up to 6 calendar days to process. When your return has been accepted, your refund will be processed to your original payment method, excluding any delivery costs. Refunds can take up to 14 days to show in your account, depending on your payment provider.</p>
+                        </div>
                       </div>
                     ) : (
                       'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.'

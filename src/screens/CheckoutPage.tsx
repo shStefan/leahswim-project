@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useCart } from '../context/CartContext';
 import { Button } from '../components/ui/button';
 import { Link, useNavigate } from 'react-router-dom';
@@ -6,12 +6,9 @@ import { DynamicText } from '../components/DynamicText';
 import { useTranslation } from '../context/TranslationContext';
 import { convertAndFormatPrice, parseCurrencyEUR } from '../utils/priceUtils';
 import { apiEndpoints } from '../utils/apiConfig';
-
-// Declare CloudPayments global object for TypeScript
-declare var cp: any;
-
-// CloudPayments Public ID
-const CLOUDPAYMENTS_PUBLIC_ID = 'pk_9d3e3480c29078014d6f10331b5a7f7c';
+import { countries } from '../utils/countries';
+import { handlePhoneInput, getCleanPhoneNumber } from '../utils/phoneMask';
+import { initializePayPalButtons, PayPalOrderData } from '../utils/paypalIntegration';
 
 // Helper to parse currency string to EUR number
 const parseCurrency = (currencyString: string): number => {
@@ -23,11 +20,9 @@ const CheckoutPage: React.FC = () => {
   const navigate = useNavigate();
   const { t } = useTranslation();
   
-  const deliveryOptions = [
-    { id: 'mkad_within', label: t('delivery.withinMKADFree'), cost: 0 },
-    { id: 'mkad_outside_20', label: t('delivery.outsideMKAD20km'), cost: 0 },
-    { id: 'mkad_outside_over_20', label: t('delivery.outsideMKADOver20km'), cost: 0 },
-  ];
+  // Fixed delivery cost for English version: 30 EUR
+  const FIXED_DELIVERY_COST = 30;
+  
   const [form, setForm] = useState({
     first_name: '',
     last_name: '',
@@ -36,20 +31,47 @@ const CheckoutPage: React.FC = () => {
     address_1: '',
     city: '',
     postcode: '',
-    country: 'RU',
+    country: 'US', // Default to US for English version
   });
-  const [selectedDeliveryOptionId, setSelectedDeliveryOptionId] = useState<string>(deliveryOptions[0].id);
   const [loading, setLoading] = useState(false);
   const [success, setSuccess] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [paypalInitialized, setPaypalInitialized] = useState(false);
+  const paypalButtonsRef = useRef<boolean>(false);
 
   useEffect(() => {
     // Scroll to top on component mount
     window.scrollTo(0, 0);
   }, []);
 
+  // Initialize PayPal buttons when form is valid and cart has items
+  useEffect(() => {
+    if (cart?.items && cart.items.length > 0 && !paypalButtonsRef.current) {
+      // Wait a bit for the container to be rendered, then initialize PayPal
+      const timer = setTimeout(() => {
+        const container = document.getElementById('paypal-button-container');
+        if (container && !paypalInitialized) {
+          const isFormValid = form.first_name && form.last_name && form.email && form.phone && 
+                             form.address_1 && form.city && form.postcode && form.country;
+          
+          if (isFormValid) {
+            initializePayPalPayment();
+          }
+        }
+      }, 100);
+      
+      return () => clearTimeout(timer);
+    }
+  }, [form, cart]);
+
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
+  };
+
+  const handlePhoneChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    handlePhoneInput(e, (value) => {
+      setForm({ ...form, phone: value });
+    });
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -58,230 +80,134 @@ const CheckoutPage: React.FC = () => {
         setError(t('checkout.emptyCartMessage'));
         return;
     }
-    setLoading(true);
-    setSuccess(null);
+    setError(null);
+    // PayPal will handle the payment, we just need to initialize it
+    if (!paypalInitialized) {
+      await initializePayPalPayment();
+    }
+  };
+
+  const initializePayPalPayment = async () => {
+    if (paypalButtonsRef.current) return;
+    
+    paypalButtonsRef.current = true;
     setError(null);
 
-    const currentDeliveryOption = deliveryOptions.find(opt => opt.id === selectedDeliveryOptionId) || deliveryOptions[0];
-    const deliveryCost = currentDeliveryOption.cost;
+    try {
+      await initializePayPalButtons('paypal-button-container', {
+        cart,
+        form,
+        deliveryCost: FIXED_DELIVERY_COST,
+        onApprove: handlePayPalApproval,
+        onError: (errorMsg: string) => {
+          setError(errorMsg || 'Payment error occurred. Please try again.');
+          setLoading(false);
+          paypalButtonsRef.current = false;
+        },
+        onCancel: () => {
+          setError('Payment was cancelled.');
+          setLoading(false);
+          paypalButtonsRef.current = false;
+        }
+      });
+      setPaypalInitialized(true);
+    } catch (error: any) {
+      console.error('[CheckoutPage] Failed to initialize PayPal:', error);
+      setError('Failed to initialize payment system. Please refresh the page and try again.');
+      paypalButtonsRef.current = false;
+    }
+  };
 
-    // Generate a unique client-side ID to use as invoiceId for CloudPayments
-    const clientGeneratedInvoiceId = `LeahSwim-${Date.now().toString(36)}-${Math.random().toString(36).substring(2, 9)}`;
-    console.log(`[CheckoutPage - handleSubmit] Generated clientInvoiceId for CloudPayments: ${clientGeneratedInvoiceId}`);
+  const handlePayPalApproval = async (orderId: string, paypalOrderData: any) => {
+    setLoading(true);
+    setError(null);
 
     try {
-      const widget = new cp.CloudPayments();
-      const totalAmountForPayment = parseCurrency(cart.total) + deliveryCost;
+      const deliveryCost = FIXED_DELIVERY_COST;
+      const totalAmount = parseCurrency(cart.total) + deliveryCost;
 
-      console.log(`[CheckoutPage - handleSubmit] Initializing CloudPayments. Amount: ${totalAmountForPayment}, ClientInvoiceId: ${clientGeneratedInvoiceId}`);
+      // Extract PayPal transaction details
+      const paypalTransactionId = paypalOrderData.purchase_units?.[0]?.payments?.captures?.[0]?.id || orderId;
+      const paypalPaymentData = paypalOrderData.purchase_units?.[0]?.payments?.captures?.[0];
 
-      widget.pay('charge',
-        { //options
-          publicId: CLOUDPAYMENTS_PUBLIC_ID,
-          description: `${t('checkout.paymentDescription')} ${clientGeneratedInvoiceId}`, // Use client generated ID
-          amount: totalAmountForPayment,
-          currency: 'EUR',
-          accountId: form.email,
-          invoiceId: clientGeneratedInvoiceId, // Use client generated ID
-          email: form.email,
-          skin: "mini",
-          data: {
-            // You can pass additional data to CP if needed
-            client_invoice_id: clientGeneratedInvoiceId,
-            client_name: `${form.first_name} ${form.last_name}`
-          },
-          payer: {
-            firstName: form.first_name,
-            lastName: form.last_name,
-            middleName: '',
-            address: form.address_1,
-            street: form.address_1.split(' ')[0] || 'N/A',
-            city: form.city,
-            country: form.country,
-            phone: form.phone.replace(/\D/g, ''),
-            postcode: form.postcode
+      console.log('[CheckoutPage - PayPal] Payment approved. Order ID:', orderId);
+      console.log('[CheckoutPage - PayPal] Order data:', JSON.stringify(paypalOrderData, null, 2));
+
+      // Create order in WooCommerce
+      const orderPayload: any = {
+        payment_method: 'paypal',
+        payment_method_title: 'PayPal',
+        set_paid: true,
+        status: 'processing',
+        transaction_id: paypalTransactionId,
+        billing: { ...form },
+        shipping: { ...form },
+        line_items: cart.items.map((item: any) => ({
+          product_id: item.parentId ? parseInt(item.parentId, 10) : parseInt(item.id, 10),
+          quantity: item.quantity,
+          variation_id: item.parentId ? parseInt(item.id, 10) : undefined,
+          name: item.title,
+          price: parseCurrency(item.unit_price),
+          total: (parseCurrency(item.unit_price) * item.quantity).toString()
+        })),
+        shipping_lines: [
+          {
+            method_id: 'fixed_delivery',
+            method_title: 'Standard Delivery',
+            total: String(deliveryCost)
           }
+        ],
+        meta_data: [
+          {
+            key: '_paypal_order_id',
+            value: orderId
+          },
+          {
+            key: '_paypal_transaction_id',
+            value: paypalTransactionId
+          },
+          {
+            key: '_payment_amount_gross',
+            value: String(totalAmount)
+          },
+          {
+            key: '_payment_currency',
+            value: 'EUR'
+          }
+        ]
+      };
+
+      console.log('[CheckoutPage - PayPal] Creating WooCommerce order:', JSON.stringify(orderPayload, null, 2));
+
+      const { url: ordersUrl, options: ordersOptions } = apiEndpoints.orders();
+      const orderRes = await fetch(ordersUrl, {
+        method: 'POST',
+        headers: {
+          ...ordersOptions.headers,
         },
-        {
-          onSuccess: async function (cpOptions: any) { 
-            // This callback might not be reliably firing based on recent tests.
-            // The primary logic for WC order creation is now in onComplete.
-            console.warn("[CheckoutPage - onSuccess] CloudPayments onSuccess CALLED UNEXPECTEDLY. This logic should ideally be in onComplete. CP Options:", JSON.stringify(cpOptions, null, 2));
-            // If it does fire, we could potentially still try to process, but it might lead to double processing if onComplete also runs.
-            // For now, just log a warning. If this becomes a frequent occurrence, we may need to add a flag to prevent double order creation.
-            // Consider if any cleanup or specific action is needed if this path is ever taken.
-          },
-          onFail: function (reason: string, cpOptions: any) { 
-            console.log(`[CheckoutPage - onFail] CloudPayments Fail. Reason: ${reason}, CP Options: ${JSON.stringify(cpOptions, null, 2)}, ClientInvoiceId used: ${clientGeneratedInvoiceId}`);
-            setError(`Ошибка оплаты: ${reason}. Пожалуйста, попробуйте снова или свяжитесь с поддержкой.`);
-            setLoading(false);
-          },
-          onComplete: async function (paymentResult: any, cpOptions: any) { // Added async, Renamed options to cpOptions
-            console.log(`[CheckoutPage - onComplete] CloudPayments Complete. ClientInvoiceId used: ${clientGeneratedInvoiceId}.`);
-            console.log('[CheckoutPage - onComplete] paymentResult:', JSON.stringify(paymentResult, null, 2));
-            console.log('[CheckoutPage - onComplete] cpOptions:', JSON.stringify(cpOptions, null, 2));
+        body: JSON.stringify(orderPayload),
+      });
 
-            if (paymentResult && paymentResult.success === true) {
-              console.log("[CheckoutPage - onComplete] Payment was successful according to paymentResult. Proceeding to create WC order.");
-              setLoading(true); 
+      const orderData = await orderRes.json();
+      console.log('[CheckoutPage - PayPal] WooCommerce order response:', JSON.stringify(orderData, null, 2));
 
-              // Attempt to find transactionId in various possible locations
-              let extractedTransactionId = null;
-              if (paymentResult.id) { // Recommended by CP docs for some scenarios
-                extractedTransactionId = String(paymentResult.id);
-                console.log(`[CheckoutPage - onComplete] Found transactionId in paymentResult.id: ${extractedTransactionId}`);
-              } else if (paymentResult.transactionId) { // Direct property
-                extractedTransactionId = String(paymentResult.transactionId);
-                console.log(`[CheckoutPage - onComplete] Found transactionId in paymentResult.transactionId (direct property): ${extractedTransactionId}`);
-              } else if (paymentResult.transaction && paymentResult.transaction.transactionId) {
-                extractedTransactionId = String(paymentResult.transaction.transactionId);
-                console.log(`[CheckoutPage - onComplete] Found transactionId in paymentResult.transaction.transactionId: ${extractedTransactionId}`);
-              }
-              // The cpOptions checks are unlikely to yield the *payment's* transaction ID,
-              // as cpOptions in onComplete usually refers to the initial input options.
-              // else if (cpOptions && cpOptions.transactionId) {
-              //   extractedTransactionId = String(cpOptions.transactionId);
-              //   console.log(`[CheckoutPage - onComplete] Found transactionId in cpOptions.transactionId (likely input invoiceId): ${extractedTransactionId}`);
-              // }
+      if (!orderRes.ok) {
+        console.error('[CheckoutPage - PayPal] Failed to create WooCommerce order:', orderData);
+        setError('Payment successful, but failed to create order. Please contact support with order ID: ' + orderId);
+        setLoading(false);
+        return;
+      }
 
-              console.log(`[CheckoutPage - onComplete] Final extracted CloudPayments transactionId: ${extractedTransactionId}`);
+      const wcOrderId = orderData.id;
+      const successMessage = `Order #${wcOrderId} created successfully! PayPal Transaction ID: ${paypalTransactionId}`;
+      setSuccess(successMessage);
+      await clearCart();
+      console.log('[CheckoutPage - PayPal] Order created successfully. Order ID:', wcOrderId);
+      setLoading(false);
 
-              if (!extractedTransactionId) {
-                console.warn("[CheckoutPage - onComplete] CloudPayments transactionId is MISSING from paymentResult. Order will be created without it, relying on clientGeneratedInvoiceId for tracking. This is not an error shown to the user, but a backend notification.");
-                // Previous: setError('Платеж прошел, но не удалось получить ID транзакции от CloudPayments. Свяжитесь с поддержкой.');
-                // Previous: setLoading(false);
-                // Previous: return; 
-                // Now we proceed without setting an error or stopping.
-              }
-
-              try {
-                // Create order in WooCommerce NOW that payment is successful
-                const orderPayload: any = { // Added 'any' type for flexibility with conditional properties
-                  payment_method: 'cloudpayments',
-                  payment_method_title: 'CloudPayments',
-                  set_paid: true,
-                  status: 'processing',
-                  billing: { ...form },
-                  shipping: { ...form },
-                  line_items: cart.items.map((item: any) => ({
-                    product_id: item.parentId ? parseInt(item.parentId, 10) : parseInt(item.id, 10),
-                    quantity: item.quantity,
-                    variation_id: item.parentId ? parseInt(item.id, 10) : undefined,
-                    name: item.title,
-                    price: parseCurrency(item.unit_price),
-                    total: (parseCurrency(item.unit_price) * item.quantity).toString()
-                  })),
-                  shipping_lines: [
-                    {
-                      method_id: currentDeliveryOption.id,
-                      method_title: currentDeliveryOption.label,
-                      total: String(deliveryCost)
-                    }
-                  ],
-                  meta_data: [
-                    {
-                      key: '_cloudpayments_client_invoice_id',
-                      value: clientGeneratedInvoiceId
-                    },
-                    // Only include _cloudpayments_transaction_id if found
-                    ...(extractedTransactionId ? [{ key: '_cloudpayments_transaction_id', value: extractedTransactionId }] : []),
-                    {
-                      key: '_payment_amount_gross',
-                      // Ensure cpOptions and cpOptions.amount are available; provide fallback or handle error if not
-                      value: String(cpOptions?.amount || totalAmountForPayment) 
-                    },
-                    {
-                      key: '_payment_currency',
-                      // Ensure cpOptions and cpOptions.currency are available
-                      value: cpOptions?.currency || 'EUR'
-                    }
-                  ]
-                };
-                
-                // Only include transaction_id at the top level if we found it
-                if (extractedTransactionId) {
-                  orderPayload.transaction_id = extractedTransactionId;
-                }
-
-                console.log(`[CheckoutPage - onComplete] Attempting to create WC order with payload:`, JSON.stringify(orderPayload, null, 2));
-                
-                const { url: ordersUrl, options: ordersOptions } = apiEndpoints.orders();
-                const orderRes = await fetch(ordersUrl, {
-                  method: 'POST',
-                  headers: {
-                    ...ordersOptions.headers,
-                  },
-                  body: JSON.stringify(orderPayload),
-                });
-
-                const orderData = await orderRes.json(); 
-                console.log(`[CheckoutPage - onComplete] WC order creation response status: ${orderRes.status}. Response data: ${JSON.stringify(orderData, null, 2)}`);
-
-                if (!orderRes.ok) {
-                  console.error('[CheckoutPage - onComplete] Ошибка создания заказа WooCommerce после успешной оплаты:', orderData);
-                  let errorMessage = t('checkout.paymentSuccess');
-                  if (extractedTransactionId) {
-                      errorMessage += ` (${t('checkout.transactionId')}: ${extractedTransactionId})`;
-                  } else {
-                      errorMessage += ` (${t('checkout.transactionIdNotReceived')})`;
-                  }
-                  errorMessage += t('checkout.orderCreationFailed');
-                  if (extractedTransactionId) {
-                      errorMessage += t('checkout.reportTransactionId');
-                  } else {
-                      errorMessage += ` ${t('checkout.reportTrackingId')}: ${clientGeneratedInvoiceId}.`;
-                  }
-                  setError(errorMessage);
-                  return; 
-                }
-                
-                const wcOrderId = orderData.id;
-                console.log(`[CheckoutPage - onComplete] WC order ${wcOrderId} created successfully.`);
-                
-                let successMessage = t('checkout.orderSuccess').replace('{id}', wcOrderId.toString());
-                if (extractedTransactionId) {
-                    successMessage += ` ${t('checkout.transactionId')}: ${extractedTransactionId}.`;
-                } else {
-                    successMessage += ` (${t('checkout.transactionIdNotReceived')}; using tracking ID: ${clientGeneratedInvoiceId}).`;
-                }
-                setSuccess(successMessage);
-
-                await clearCart();
-                console.log(`[CheckoutPage - onComplete] Cart cleared for WC order ${wcOrderId}.`);
-
-              } catch (wcCreateError: any) {
-                console.error(`[CheckoutPage - onComplete] Critical error during WC order creation after payment:`, wcCreateError);
-                let errorMessage = t('checkout.paymentSuccess');
-                if (extractedTransactionId) {
-                    errorMessage += ` (${t('checkout.transactionId')}: ${extractedTransactionId})`;
-                } else {
-                    errorMessage += ` (${t('checkout.transactionIdNotReceived')})`;
-                }
-                errorMessage += t('checkout.criticalError');
-                if (extractedTransactionId) {
-                    errorMessage += t('checkout.reportTransactionId');
-                } else {
-                    errorMessage += ` ${t('checkout.reportTrackingId')}: ${clientGeneratedInvoiceId}.`;
-                }
-                setError(errorMessage);
-              } finally {
-                setLoading(false);
-                console.log(`[CheckoutPage - onComplete] Processing finished for ClientInvoiceId: ${clientGeneratedInvoiceId}.`);
-              }
-            } else if (paymentResult && paymentResult.success === false) {
-              console.log("[CheckoutPage - onComplete] Payment failed according to paymentResult. Error message:", paymentResult.message);
-              // Error display is likely handled by onFail, but good to log here.
-              // setLoading(false); // Ensure loading is stopped if onFail didn't or if onComplete is the only one called on failure.
-            } else {
-              console.warn("[CheckoutPage - onComplete] Called but paymentResult is inconclusive or missing.", paymentResult);
-              // setLoading(false); // Consider stopping loading if state is uncertain.
-            }
-          }
-        }
-      );
-    } catch (err: any) {
-      console.error('[CheckoutPage - handleSubmit] Error initializing CloudPayments or other pre-payment error:', err);
-      setError(err.message || 'Не удалось инициализировать систему оплаты. Пожалуйста, попробуйте позже.');
+    } catch (error: any) {
+      console.error('[CheckoutPage - PayPal] Error creating order:', error);
+      setError('Payment successful, but there was an error processing your order. Please contact support.');
       setLoading(false);
     }
   };
@@ -291,8 +217,8 @@ const CheckoutPage: React.FC = () => {
       <div className="min-h-screen bg-gray-100 flex flex-col items-center justify-center py-12 px-4 text-center">
         <div className="bg-white p-8 rounded-lg shadow-xl max-w-md">
           <p className="text-xl font-semibold text-green-600 mb-4">{success}</p>
-          <p className="text-gray-700 mb-6">Мы свяжемся с вами для подтверждения деталей заказа.</p>
-          <Button onClick={() => navigate('/')} className="w-full">Вернуться на главную</Button>
+          <p className="text-gray-700 mb-6">We will contact you to confirm your order details.</p>
+          <Button onClick={() => navigate('/')} className="w-full">Return to Homepage</Button>
         </div>
       </div>
     );
@@ -320,7 +246,7 @@ const CheckoutPage: React.FC = () => {
               </div>
               <div>
                 <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">{t('form.phone')} *</label>
-                <input name="phone" id="phone" value={form.phone} onChange={handleChange} type="tel" required className="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm p-2.5" placeholder="+7 (XXX) XXX-XX-XX"/>
+                <input name="phone" id="phone" value={form.phone} onChange={handlePhoneChange} type="tel" required className="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm p-2.5" placeholder="+1 (XXX) XXX-XX-XX"/>
               </div>
               <div>
                 <label htmlFor="address_1" className="block text-sm font-medium text-gray-700 mb-1">{t('form.address')} *</label>
@@ -338,21 +264,17 @@ const CheckoutPage: React.FC = () => {
               </div>
               <div>
                 <label htmlFor="country" className="block text-sm font-medium text-gray-700 mb-1">{t('form.country')} *</label>
-                <input name="country" id="country" value={form.country} onChange={handleChange} type="text" required className="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm p-2.5" />
-              </div>
-              <div>
-                <label htmlFor="delivery_option" className="block text-sm font-medium text-gray-700 mb-1">{t('form.deliveryOption')} *</label>
                 <select
-                  name="delivery_option"
-                  id="delivery_option"
-                  value={selectedDeliveryOptionId}
-                  onChange={(e) => setSelectedDeliveryOptionId(e.target.value)}
+                  name="country"
+                  id="country"
+                  value={form.country}
+                  onChange={handleChange}
                   required
                   className="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm p-2.5"
                 >
-                  {deliveryOptions.map(option => (
-                    <option key={option.id} value={option.id}>
-                      {option.label}
+                  {countries.map(country => (
+                    <option key={country.code} value={country.code}>
+                      {country.name}
                     </option>
                   ))}
                 </select>
@@ -460,37 +382,39 @@ const CheckoutPage: React.FC = () => {
                 })()}
                 <div className="flex justify-between text-sm text-gray-600">
                   <span>{t('checkout.delivery')}</span>
-                  <span className="font-medium text-gray-800">
-                    {((deliveryOptions.find(opt => opt.id === selectedDeliveryOptionId) || deliveryOptions[0]).cost === 0) ? t('checkout.free') : `€${Math.round((deliveryOptions.find(opt => opt.id === selectedDeliveryOptionId) || deliveryOptions[0]).cost / 92)}`}
-                  </span>
+                  <span className="font-medium text-gray-800">€{FIXED_DELIVERY_COST}</span>
                 </div>
                 <div className="flex justify-between text-base font-semibold text-gray-900 pt-2 border-t border-gray-200 mt-3">
                   <span>{t('checkout.totalToPay')}</span>
-                  <span>{`€${Math.trunc(parseCurrency(cart.total) + Math.round((deliveryOptions.find(opt => opt.id === selectedDeliveryOptionId) || deliveryOptions[0]).cost / 92))}`}</span>
+                  <span>{`€${Math.trunc(parseCurrency(cart.total) + FIXED_DELIVERY_COST)}`}</span>
                 </div>
                 {error && (
                   <div className="text-red-600 text-sm p-3 bg-red-50 rounded-md">
                     {error}
                   </div>
                 )}
-                <Button 
-                  form="checkout-form" 
-                  type="submit" 
-                  className="w-full bg-black hover:bg-gray-800 text-white font-semibold py-3 px-4 rounded-lg shadow-md transition duration-150 ease-in-out flex items-center justify-center"
-                  disabled={loading || !cart || !cart.items || cart.items.length === 0}
-                >
-                  {loading ? (
-                    <>
-                      <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                      </svg>
-                      {t('checkout.processing')}
-                    </>
-                  ) : t('checkout.confirmAndPay')}
-                </Button>
+                {/* PayPal Button Container */}
+                <div id="paypal-button-container" className="w-full mb-4"></div>
+                {!paypalInitialized && (
+                  <Button 
+                    form="checkout-form" 
+                    type="submit" 
+                    className="w-full bg-black hover:bg-gray-800 text-white font-semibold py-3 px-4 rounded-lg shadow-md transition duration-150 ease-in-out flex items-center justify-center"
+                    disabled={loading || !cart || !cart.items || cart.items.length === 0}
+                  >
+                    {loading ? (
+                      <>
+                        <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                          <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                          <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                        </svg>
+                        {t('checkout.processing')}
+                      </>
+                    ) : 'Continue to Payment'}
+                  </Button>
+                )}
                 <p className="mt-2 text-xs text-gray-500 text-center">
-                  {t('checkout.paymentMethod')}
+                  Payment by PayPal
                 </p>
               </div>
             )}

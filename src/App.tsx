@@ -12,9 +12,9 @@ import CheckoutPage from './screens/CheckoutPage';
 import AboutPage from './screens/AboutPage';
 import ContactPage from './screens/ContactPage';
 import ScrollToTop from './components/ScrollToTop';
-import { useState } from 'react';
 import { TranslationProvider } from './context/TranslationContext';
 import { YandexFeedGenerator } from './components/YandexFeedGenerator';
+import CookieConsent from './components/CookieConsent';
 
 function App() {
   // Disabled PromoModal for English version
@@ -52,6 +52,7 @@ function App() {
               </div>
               <Footer />
             </div>
+            <CookieConsent />
           </Router>
         </LikesProvider>
       </CartProvider>

@@ -37,28 +37,8 @@ const DeliveryInfoModal: React.FC<DeliveryInfoModalProps> = ({ isOpen, onClose }
           </div>
           <div className="p-6 text-sm text-black space-y-3 leading-relaxed">
             <div>
-              <p><strong>CDEK Moscow</strong></p>
-              <p>Within Moscow and MKAD — €8</p>
-              <p>Outside MKAD — €16</p>
-            </div>
-            
-            <div className="pt-3">
-              <p><strong>CDEK Russia</strong></p>
-              <p>CDEK delivery throughout Russia.</p>
-              <p>Delivery cost is calculated according to CDEK company tariffs. Delivery time (excluding order processing time) depends on the recipient's address</p>
-            </div>
-            
-            <div className="pt-3">
-              <p><strong>Pickup without fitting</strong></p>
-              <p>Moscow, ul. Novaya Basmannaya, 19bld1</p>
-            </div>
-            
-            <div className="pt-3">
-              <p>For delivery information, please contact us:</p>
-              <ul className="list-disc list-inside pl-2 space-y-1">
-                <li>By phone: <a href="tel:+79268792878" className="text-indigo-600 hover:text-indigo-800 underline">+7 (926) 879-28-78</a></li>
-                <li>By email: <a href="mailto:info@leahcation.com" className="text-indigo-600 hover:text-indigo-800 underline">info@leahcation.com</a></li>
-              </ul>
+              <p className="font-semibold mb-2">Shipping:</p>
+              <p>Worldwide shipping (7-14 business days)</p>
             </div>
           </div>
           <div className="p-4 border-t border-gray-200 text-right">

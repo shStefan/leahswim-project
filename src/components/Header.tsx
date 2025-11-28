@@ -5,6 +5,7 @@ import { useLikes } from '../context/LikesContext';
 import { useCart } from '../context/CartContext';
 import { useTranslation } from '../context/TranslationContext';
 import { convertAndFormatPrice, parseCurrencyEUR } from '../utils/priceUtils';
+import { DynamicText } from './DynamicText';
 
 // Define types for navigation items
 interface NavSubItem {
@@ -588,7 +589,11 @@ const Header = () => {
                       className="w-20 h-20 object-cover rounded border mr-4"
                     />
                     <div className="flex-1 flex flex-col items-start text-left">
-                      <div className="font-semibold text-base mb-1">{item.title}</div>
+                      <DynamicText 
+                        text={item.title}
+                        tag="div"
+                        className="font-semibold text-base mb-1"
+                      />
                       <div className="text-sm text-black font-bold">
                         {lineDiscount > 0 ? (
                           <>

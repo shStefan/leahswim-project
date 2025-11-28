@@ -17,7 +17,7 @@
         },
         {
           "key": "ETag",
-          "value": "W/\"english-version-v1.1\""
+          "value": "W/\"english-version-v1.2\""
         },
         {
           "key": "Strict-Transport-Security",
@@ -26,7 +26,7 @@
       ]
     },
     {
-      "source": "/assets/(.*\\.(js|css|woff|woff2|ttf|eot|svg|png|jpg|jpeg|gif|webp|ico))",
+      "source": "/assets/:path*",
       "headers": [
         {
           "key": "Cache-Control",

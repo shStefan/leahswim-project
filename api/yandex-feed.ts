@@ -1,9 +1,9 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 
-// WooCommerce API credentials for Elementor website (English version)
-const WC_CONSUMER_KEY = 'ck_ff9c4383fa5c871c9b39e47b6d5a421a92136364';
-const WC_CONSUMER_SECRET = 'cs_5a31a98c30e4b1617a5873ff2ea42699922f2545';
-const WC_API_URL = 'https://zdqksnii.elementor.cloud/wp-json/wc/v3';
+// WooCommerce API credentials (same as Russian version)
+const WC_CONSUMER_KEY = 'ck_084aa13e23a1accc48bc43802ffe9757f01005b4';
+const WC_CONSUMER_SECRET = 'cs_5001dac555fade564eeb29c4d95fb49ea973d6f5';
+const WC_API_URL = 'https://leahcation.ru/wp/wp-json/wc/v3';
 
 // Helper function to handle base64 encoding in Node.js
 const base64Encode = (str: string): string => {
