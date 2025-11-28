@@ -27,6 +27,42 @@ class TranslationService {
   private readonly CACHE_KEY = 'triangl_translations';
   private readonly CACHE_EXPIRY = 7 * 24 * 60 * 60 * 1000; // 7 days
 
+  // Static mapping for common Russian to English translations
+  private static readonly STATIC_MAPPINGS: Record<string, string> = {
+    // Age ranges with height
+    '8-10 лет (рост 134-140)': '8-10 years (height 134-140)',
+    '10-12 лет (рост 146-152)': '10-12 years (height 146-152)',
+    '6-8 лет (рост 122-128)': '6-8 years (height 122-128)',
+    '4-6 лет (рост 110-116)': '4-6 years (height 110-116)',
+    '12-14 лет (рост 158-164)': '12-14 years (height 158-164)',
+    
+    // Common UI elements (Russian to English)
+    'ЦВЕТ': 'COLOR',
+    'Категория': 'Category',
+    'Сортировать': 'Sort',
+    'Очистить все': 'Clear All',
+    'Размер': 'Size',
+    'Цвет': 'Color',
+    'Показать 28 результатов': 'Show 28 results',
+    'Для детской одежды': 'For Children\'s clothing',
+    
+    // Common UI elements (already in English, but keep for consistency)
+    'COLOR': 'COLOR',
+    'Category': 'Category',
+    'Sort': 'Sort',
+    'Clear All': 'Clear All',
+    'Size': 'Size',
+    'Color': 'Color',
+    'Show 28 results': 'Show 28 results',
+    'For Children\'s clothing': 'For Children\'s clothing',
+    
+    // Filters
+    'common.filtersFor Children\'s clothing': 'Filters for Children\'s clothing',
+    'Фильтры для детской одежды': 'Filters for Children\'s clothing',
+    'левт рост': 'left height', // Assuming this is a typo for "левый рост"
+    'левый рост': 'left height',
+  };
+
   constructor() {
     this.loadCache();
   }
@@ -61,134 +97,16 @@ class TranslationService {
     return text.toLowerCase().trim();
   }
 
-  // Static product name mappings
-  private staticProductNames: Record<string, string> = {
-    'туника st. tropez': 'St. Tropez Tunic',
-    'блуза': 'Blouse',
-    'бра двустороннее': 'Reversible Bra',
-    'плавки двусторонние': 'Reversible Bottoms',
-    'платье из вискозы': 'Viscose Dress',
-    'туника двусторонняя': 'Reversible Tunic',
-    'туника с капюшоном из муслина': 'Muslin Hooded Tunic',
-    'шорты миди из хлопка': 'Cotton Midi Shorts',
-    'рубашка с коротким рукавом из хлопка': 'Cotton Short-Sleeve Shirt',
-    'купальник слитный vita классика': 'Vita Classic One-Piece Swimsuit',
-    'бикини бра двустороннее': 'Reversible Bikini Bra',
-    'бра бандо двустороннее': 'Reversible Bandeau Bra',
-    'бра бандо двустороннее plus size': 'Reversible Bandeau Bra Plus Size',
-    'бра ким двустороннее plus size': 'Reversible Kim Bra Plus Size',
-    'парео': 'Pareo',
-    'плавки martina двусторонние plus size': 'Reversible Martina Bottoms Plus Size',
-    'плавки классика двусторонние plus size': 'Reversible Classic Bottoms Plus Size',
-    'плавки с завышенной талией двусторонние': 'Reversible High-Waist Bottoms',
-    'плавки с заниженной талией двусторонние': 'Reversible Low-Waist Bottoms',
-    'топ на молнии однотонный': 'Solid Zip-Front Top',
-    'плавки бикини двусторонние': 'Reversible Bikini Bottoms',
-    'брюки из хлопка': 'Cotton Pants',
-    'рубашка с длинным рукавом из хлопка': 'Cotton Long-Sleeve Shirt',
-    'бра бикини': 'Bikini Bra',
-    'бра ким двустороннее': 'Reversible Kim Bra',
-    'шляпа fedora': 'Fedora Hat',
-    'шляпа daffodil': 'Daffodil Hat',
-    'бра zemfira двустороннее': 'Reversible Zemfira Bra',
-    'шляпа bobby': 'Bobby Hat',
-    'шляпа jockey': 'Jockey Hat',
-    'козырек funky': 'Funky Visor',
-    'шляпа cowgirl': 'Cowgirl Hat',
-    'купальник renata': 'Renata Swimsuit',
-    'плавки классика двусторонние': 'Reversible Classic Bottoms',
-    'купальник romper двусторонний': 'Reversible Romper Swimsuit',
-    'спортивный купальник с коротким рукавом': 'Short-Sleeve Sport Swimsuit',
-    'купальник слитный двусторонний': 'Reversible One-Piece Swimsuit',
-    'туника nomad': 'Nomad Tunic',
-    'платье sicilia': 'Sicilia Dress',
-    'шорты corfu из хлопка': 'Corfu Cotton Shorts',
-    'туника трансформер': 'Convertible Tunic',
-    'шорты двусторонние': 'Reversible Shorts',
-    'рубашка двусторонняя': 'Reversible Shirt',
-    'туника mykonos': 'Mykonos Tunic',
-    'брюки бананы льняные': 'Linen Banana Pants',
-    'облегающая льняная рубашка с длинным рукавом': 'Fitted Linen Long-Sleeve Shirt',
-    'брюки': 'Pants',
-    'шорты миди': 'Midi Shorts',
-    'рубашка с длинным рукавом': 'Long-Sleeve Shirt',
-    'рубашка с коротким рукавом': 'Short-Sleeve Shirt',
-    'кимоно': 'Kimono',
-    'слитный купальник miranda двусторонний plus size': 'Reversible Miranda One-Piece Plus Size',
-    'слитный купальник mariella двусторонний plus size': 'Reversible Mariella One-Piece Plus Size',
-    'плавки с завышенной талией двусторонние plus size': 'Reversible High-Waist Bottoms Plus Size',
-    'туника двусторонняя aureglia': 'Aureglia Reversible Tunic',
-    'платье-рубашка': 'Shirt Dress',
-    'портупея rihanna': 'Rihanna Harness',
-    'портупея beyonce': 'Beyonce Harness',
-    'пояс kylie': 'Kylie Belt',
-    'шляпа orion': 'Orion Hat',
-    'шляпа phoenix': 'Phoenix Hat',
-    'шляпа cassiopea': 'Cassiopea Hat',
-    'рюкзак': 'Backpack',
-    'бра классика': 'Classic Bra',
-    'корзина из ротанга': 'Rattan Basket',
-    'плавки бикини': 'Bikini Bottoms',
-    'плавки классика': 'Classic Bottoms',
-    'плавки с завышенной талией': 'High-Waist Bottoms',
-    'плавки с заниженной талией': 'Low-Waist Bottoms',
-    'платье миди tamara': 'Tamara Midi Dress',
-    'платье мини tamara': 'Tamara Mini Dress',
-    'свитшот paisley grey melange': 'Paisley Grey Melange Sweatshirt',
-    'свитшот двусторонний из флиса paisley orange': 'Reversible Paisley Orange Fleece Sweatshirt',
-    'сумка-мешок': 'Bucket Bag',
-    'шорты corfu': 'Corfu Shorts',
-    'шляпа anemone': 'Anemone Hat',
-    'шляпа dahlia': 'Dahlia Hat',
-    'шляпа rose': 'Rose Hat',
-    'бра майка': 'Tank Bra',
-    'бра "ким"': 'Kim Bra',
-    'брюки двусторонние из флиса paisley orange': 'Reversible Paisley Orange Fleece Pants',
-    'свитшот paisley black': 'Paisley Black Sweatshirt',
-    'брюки paisley grey melange': 'Paisley Grey Melange Pants',
-    'худи paisley grey melange': 'Paisley Grey Melange Hoodie',
-    'твилли (двустороннее)': 'Reversible Twilly',
-    'шорты мини corfu': 'Corfu Mini Shorts',
-    'худи paisley black': 'Paisley Black Hoodie',
-    'шорты': 'Shorts',
-    'брюки paisley black': 'Paisley Black Pants',
-    'слитный классика vita': 'Vita Classic One-Piece',
-    'слитный amanda vita': 'Amanda Vita One-Piece',
-    'платье': 'Dress',
-    'топ на молнии голограмма': 'Hologram Zip-Front Top',
-    'ветровка': 'Windbreaker',
-    'леггинсы с принтом': 'Printed Leggings',
-    'леггинсы однотонные': 'Solid Leggings',
-    'леггинсы голограмма': 'Hologram Leggings',
-    'велосипедки с принтом': 'Printed Biker Shorts',
-    'топ двусторонний': 'Reversible Top',
-    'топ на молнии с принтом': 'Printed Zip-Front Top',
-    'шляпа whisper': 'Whisper Hat',
-    'слитный купальник eva': 'Eva One-Piece Swimsuit',
-    'спортивный купальник с длинным рукавом': 'Long-Sleeve Sport Swimsuit',
-    'бра бандо': 'Bandeau Bra',
-    'слитный купальник классика': 'Classic One-Piece Swimsuit',
-    'топ santorini': 'Santorini Top',
-    'платок': 'Scarf',
-    'шерстяная рубашка с длинным рукавом': 'Wool Long-Sleeve Shirt',
-    'шерстяные брюки': 'Wool Pants',
-    'бра классика двустороннее': 'Reversible Classic Bra',
-    'купальник слитный двусторонний классика': 'Reversible Classic One-Piece',
-    'шорты мини': 'Mini Shorts',
-    'сеты': 'Sets',
-    'раздельные': 'Separates',
-    'слитые': 'One-Piece',
-  };
-
   async translateText(text: string, targetLang: Language = 'en'): Promise<string> {
     if (!text || text.trim() === '') return text;
     
-    const cacheKey = this.getCacheKey(text);
-    
-    // Check static product name mappings first
-    if (targetLang === 'en' && this.staticProductNames[cacheKey]) {
-      return this.staticProductNames[cacheKey];
+    // Check static mappings first (before cache)
+    const trimmedText = text.trim();
+    if (targetLang === 'en' && TranslationService.STATIC_MAPPINGS[trimmedText]) {
+      return TranslationService.STATIC_MAPPINGS[trimmedText];
     }
+    
+    const cacheKey = this.getCacheKey(text);
     
     // Check cache
     if (this.cache[cacheKey]?.[targetLang]) {
@@ -366,16 +284,6 @@ export const TranslationProvider: React.FC<TranslationProviderProps> = ({ childr
     'common.clearAll': { ru: 'Очистить все', en: 'Clear All' },
     'common.allSubcategories': { ru: 'Все подкатегории', en: 'All Subcategories' },
     'common.showResults': { ru: 'Показать {count} результатов', en: 'Show {count} results' },
-    'common.filtersFor': { ru: 'Фильтры для', en: 'Filters for' },
-    'common.clearSize': { ru: 'Очистить размер', en: 'Clear size' },
-    'common.clearColor': { ru: 'Очистить цвет', en: 'Clear color' },
-    'common.clearMainCategory': { ru: 'Очистить основную категорию', en: 'Clear main category' },
-    'common.clearSubCategory': { ru: 'Очистить подкатегорию', en: 'Clear subcategory' },
-    
-    // Category names for top section
-    'category.sets': { ru: 'Сеты', en: 'Sets' },
-    'category.separates': { ru: 'Раздельные', en: 'Separates' },
-    'category.onepiece': { ru: 'Слитые', en: 'One-Piece' },
 
     // Cart translations
     'cart.title': { ru: 'КОРЗИНА', en: 'CART' },
@@ -478,22 +386,6 @@ export const TranslationProvider: React.FC<TranslationProviderProps> = ({ childr
     'checkout.andEn': { ru: 'и', en: 'and' },
     'checkout.privacyPolicy': { ru: 'Политикой конфиденциальности', en: 'Privacy Policy' },
     'checkout.privacyPolicyEn': { ru: 'Политикой конфиденциальности', en: 'Privacy Policy' },
-    'checkout.emptyCartMessage': { ru: 'Ваша корзина пуста. Пожалуйста, добавьте товары перед оформлением заказа.', en: 'Your cart is empty. Please add items before checkout.' },
-    'checkout.paymentDescription': { ru: 'Оплата заказа', en: 'Payment for order' },
-    'checkout.paymentSuccess': { ru: 'Платеж прошел успешно', en: 'Payment successful' },
-    'checkout.transactionId': { ru: 'ID транзакции', en: 'Transaction ID' },
-    'checkout.transactionIdNotReceived': { ru: 'ID транзакции CloudPayments не был получен', en: 'CloudPayments transaction ID was not received' },
-    'checkout.orderCreationFailed': { ru: ', но не удалось создать заказ в системе. Пожалуйста, срочно свяжитесь с поддержкой', en: ', but order creation failed. Please contact support immediately' },
-    'checkout.reportTransactionId': { ru: ', сообщив ID транзакции.', en: ', reporting the transaction ID.' },
-    'checkout.reportTrackingId': { ru: ', сообщив внутренний ID отслеживания', en: ', reporting the tracking ID' },
-    'checkout.orderSuccess': { ru: 'Заказ №{id} успешно оплачен и создан!', en: 'Order #{id} successfully paid and created!' },
-    'checkout.criticalError': { ru: ', но произошла критическая ошибка при создании заказа. Свяжитесь с поддержкой', en: ', but a critical error occurred during order creation. Contact support' },
-    
-    // Promo modal
-    'promo.title': { ru: 'Летние скидки', en: 'Summer Discounts' },
-    'promo.discount1': { ru: 'Скидка 10 % при покупке двух товаров', en: '10% discount when buying two items' },
-    'promo.discount2': { ru: 'Третий товар — в подарок', en: 'Third item — free' },
-    'promo.discount3': { ru: 'Скидка 15 % на четвёртый товар', en: '15% discount on the fourth item' },
     
     // Form fields
     'form.firstName': { ru: 'Имя', en: 'First Name' },
@@ -516,9 +408,8 @@ export const TranslationProvider: React.FC<TranslationProviderProps> = ({ childr
     'form.deliveryOptionEn': { ru: 'Доставка', en: 'Delivery' },
     
     // Delivery options
-    // Note: keep keys the same to avoid breaking usage, but remove "Бесплатно/Free" from the visible label
-    'delivery.withinMKADFree': { ru: 'В пределах МКАД', en: 'Within MKAD' },
-    'delivery.withinMKADFreeEn': { ru: 'В пределах МКАД', en: 'Within MKAD' },
+    'delivery.withinMKADFree': { ru: 'В пределах МКАД - Бесплатно', en: 'Within MKAD - Free' },
+    'delivery.withinMKADFreeEn': { ru: 'В пределах МКАД - Бесплатно', en: 'Within MKAD - Free' },
     'delivery.outsideMKAD20km': { ru: 'За пределами МКАД (до 20км)', en: 'Outside MKAD (up to 20km)' },
     'delivery.outsideMKAD20kmEn': { ru: 'За пределами МКАД (до 20км)', en: 'Outside MKAD (up to 20km)' },
     'delivery.outsideMKADOver20km': { ru: 'За пределами МКАД (после 20 км)', en: 'Outside MKAD (over 20km)' },

@@ -67,15 +67,12 @@ const CookieConsent: React.FC = () => {
   }
 
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 p-4 bg-white border-t-2 border-gray-200 shadow-lg animate-slide-up">
+    <div className="fixed bottom-0 left-0 right-0 z-50 p-4 border-t-2 border-gray-200 shadow-lg animate-slide-up" style={{ backgroundColor: '#8ED0E6' }}>
       <div className="max-w-7xl mx-auto flex flex-col md:flex-row items-center justify-between gap-4">
         <div className="flex-1 text-sm text-gray-700">
-          <p className="mb-1">
+          <p>
             We use cookies to enhance your browsing experience and analyze our traffic. 
             By clicking "I agree to terms and conditions", you consent to our use of cookies.
-          </p>
-          <p className="text-xs text-gray-500">
-            This banner will reappear every 3 days for your review.
           </p>
         </div>
         <div className="flex items-center gap-3">
