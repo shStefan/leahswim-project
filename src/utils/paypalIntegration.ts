@@ -1,6 +1,6 @@
 // PayPal Integration for English Version
 // PayPal Client ID - Replace with your actual PayPal Client ID from PayPal Developer Dashboard
-export const PAYPAL_CLIENT_ID = 'YOUR_PAYPAL_CLIENT_ID_HERE'; // Replace with your PayPal Client ID
+export const PAYPAL_CLIENT_ID = 'AU23b6phBDxjcgb7iaT7Lgztx8N02zV7cZjO3_HxIaN8PXsLNAfhW64n6dDHxOJLEDOgtYEJUjyTcIoq';
 
 // PayPal script loader
 export const loadPayPalScript = (): Promise<boolean> => {
