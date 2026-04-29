@@ -4,6 +4,8 @@ import { Button } from '../components/ui/button';
 import { Link, useNavigate } from 'react-router-dom';
 import { DynamicText } from '../components/DynamicText';
 import { useTranslation } from '../context/TranslationContext';
+import GTCModal from '../components/GTCModal';
+import CookiesPolicyModal from '../components/CookiesPolicyModal';
 import { convertAndFormatPrice, parseCurrencyEUR } from '../utils/priceUtils';
 import { apiEndpoints } from '../utils/apiConfig';
 import { countries } from '../utils/countries';
@@ -39,6 +41,9 @@ const CheckoutPage: React.FC = () => {
   const [error, setError] = useState<string | null>(null);
   const [paypalInitialized, setPaypalInitialized] = useState(false);
   const paypalButtonsRef = useRef<boolean>(false);
+  const [agreeNewsletter, setAgreeNewsletter] = useState(false);
+  const [isGTCModalOpen, setIsGTCModalOpen] = useState(false);
+  const [isPrivacyModalOpen, setIsPrivacyModalOpen] = useState(false);
 
   useEffect(() => {
     // Scroll to top on component mount
@@ -449,12 +454,28 @@ const CheckoutPage: React.FC = () => {
                 </p>
               </div>
             )}
-            <p className="mt-6 text-xs text-gray-500 text-center">
-              {t('checkout.agreeTerms')} <a href="/terms" className="underline hover:text-gray-700">{t('checkout.termsOfService')}</a> {t('checkout.and')} <a href="/privacy" className="underline hover:text-gray-700">{t('checkout.privacyPolicy')}</a>.
-            </p>
+            <div className="mt-6 space-y-3">
+              <label className="flex items-start gap-2 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={agreeNewsletter}
+                  onChange={(e) => setAgreeNewsletter(e.target.checked)}
+                  className="mt-0.5 h-4 w-4 rounded border-gray-300 text-black focus:ring-black"
+                />
+                <span className="text-xs text-gray-600">I agree to receive newsletters and promotional emails from LÉAH</span>
+              </label>
+              <p className="text-xs text-gray-500 text-center">
+                {t('checkout.agreeTerms')}{' '}
+                <button type="button" onClick={() => setIsGTCModalOpen(true)} className="underline hover:text-gray-700">{t('checkout.termsOfService')}</button>
+                {' '}{t('checkout.and')}{' '}
+                <button type="button" onClick={() => setIsPrivacyModalOpen(true)} className="underline hover:text-gray-700">{t('checkout.privacyPolicy')}</button>.
+              </p>
+            </div>
           </div>
         </div>
       </div>
+      <GTCModal isOpen={isGTCModalOpen} onClose={() => setIsGTCModalOpen(false)} />
+      <CookiesPolicyModal isOpen={isPrivacyModalOpen} onClose={() => setIsPrivacyModalOpen(false)} />
     </div>
   );
 };
