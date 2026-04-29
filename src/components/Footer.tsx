@@ -4,12 +4,16 @@ import { Link } from 'react-router-dom';
 import DeliveryInfoModal from './DeliveryInfoModal';
 import ReturnPolicyModal from './ReturnPolicyModal';
 import SizeChartModal from './SizeChartModal';
+import GTCModal from './GTCModal';
+import CookiesPolicyModal from './CookiesPolicyModal';
 import { useTranslation } from '../context/TranslationContext';
 
 export const Footer = () => {
   const [isDeliveryModalOpen, setIsDeliveryModalOpen] = useState(false);
   const [isReturnModalOpen, setIsReturnModalOpen] = useState(false);
   const [isSizeChartModalOpen, setIsSizeChartModalOpen] = useState(false);
+  const [isGTCModalOpen, setIsGTCModalOpen] = useState(false);
+  const [isCookiesModalOpen, setIsCookiesModalOpen] = useState(false);
   const { t, language } = useTranslation();
 
   const footerSections = [
@@ -42,7 +46,7 @@ export const Footer = () => {
     {
       title: t('footer.social'),
       links: [
-        { name: 'WhatsApp', path: 'https://web.whatsapp.com/send?phone=79268792878&text=' },
+        { name: 'WhatsApp', path: 'https://web.whatsapp.com/send?phone=33640613269&text=' },
         { name: 'Telegram', path: 'https://t.me/swimwithleah' },
       ],
     },
@@ -69,13 +73,25 @@ export const Footer = () => {
               {section.customContentType === 'contacts' ? (
                 <div className="text-xs text-black space-y-2">
                   {language === 'en' ? (
-                    // English version - only show email
-                    <p><a href="mailto:info@leahcation.com" className="hover:text-gray-700 transition-colors">info@leahcation.com</a></p>
+                    // English version - show email + legal links
+                    <>
+                      <p><a href="mailto:info@leahcation.com" className="hover:text-gray-700 transition-colors">info@leahcation.com</a></p>
+                      <p className="mt-2">
+                        <button onClick={() => setIsGTCModalOpen(true)} className="hover:text-gray-700 transition-colors underline text-left">
+                          General Terms & Conditions
+                        </button>
+                      </p>
+                      <p>
+                        <button onClick={() => setIsCookiesModalOpen(true)} className="hover:text-gray-700 transition-colors underline text-left">
+                          Cookies Policy
+                        </button>
+                      </p>
+                    </>
                   ) : (
                     // Russian version - show all contact information
                     <>
                       <p><a href="mailto:info@leahcation.ru" className="hover:text-gray-700 transition-colors">info@leahcation.ru</a></p>
-                      <p><a href="tel:+79268792878" className="hover:text-gray-700 transition-colors">+7 (926) 879-28-78</a></p>
+                      <p><a href="tel:+33640613269" className="hover:text-gray-700 transition-colors">+33 6 40 61 32 69</a></p>
                       <p className="mt-1">ООО "Мигдаль"</p>
                       <p className="mt-1">
                         <a 
@@ -116,6 +132,8 @@ export const Footer = () => {
       <DeliveryInfoModal isOpen={isDeliveryModalOpen} onClose={() => setIsDeliveryModalOpen(false)} />
       <ReturnPolicyModal isOpen={isReturnModalOpen} onClose={() => setIsReturnModalOpen(false)} />
       <SizeChartModal isOpen={isSizeChartModalOpen} onClose={() => setIsSizeChartModalOpen(false)} />
+      <GTCModal isOpen={isGTCModalOpen} onClose={() => setIsGTCModalOpen(false)} />
+      <CookiesPolicyModal isOpen={isCookiesModalOpen} onClose={() => setIsCookiesModalOpen(false)} />
     </>
   );
 }; 

@@ -18,7 +18,7 @@ const getContactInfo = (t: (key: string) => string, language: string) => {
     {
       label: t('contact.phone'),
       value: '+7 (926) 879-28-78',
-      href: 'tel:+79268792878',
+      href: 'tel:+33640613269',
     },
     {
       label: t('contact.location'),

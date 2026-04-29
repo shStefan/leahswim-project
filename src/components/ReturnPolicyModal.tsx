@@ -39,7 +39,7 @@ const ReturnPolicyModal: React.FC<ReturnPolicyModalProps> = ({ isOpen, onClose }
             <p>Items must be new, in perfect condition, unused, with no signs of deformation or mechanical damage, no stains, snags, or foreign odors. All sewn labels, tags, and seals on the item must be preserved and undamaged, original packaging must be present, as well as receipts confirming the purchase. Returns are not provided for silver items, decorations, and jewelry.</p>
             <p>To arrange a return, please contact us:</p>
             <ul className="list-disc list-inside pl-2 space-y-1">
-              <li>By phone: <a href="tel:+79268792878" className="text-indigo-600 hover:text-indigo-800 underline">+7 926 879-28-78</a></li>
+              <li>By phone: <a href="tel:+33640613269" className="text-indigo-600 hover:text-indigo-800 underline">+33 6 40 61 32 69</a></li>
               <li>By email: <a href="mailto:info@leahcation.com" className="text-indigo-600 hover:text-indigo-800 underline">info@leahcation.com</a></li>
             </ul>
             <p className="pt-3 border-t border-gray-200 mt-3">

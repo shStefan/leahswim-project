@@ -23,12 +23,8 @@ interface NavItem {
 // Navigation items with translation keys
 const getNavItems = (t: (key: string) => string, language: string): NavItem[] => [
   {
-    title: t('nav.swimwear'),
-    path: `${language === 'en' ? '/en' : ''}/category/%25d0%25ba%25d1%2583%25d0%25bf%25d0%25b0%25d0%25bb%25d1%258c%25d0%25bd%25d0%25b8%25d0%25ba%25d0%25b8-2`,
-  },
-  {
-    title: t('nav.clothing'),
-    path: `${language === 'en' ? '/en' : ''}/category/%25d0%25be%25d0%25b4%25d0%25b5%25d0%25b6%25d0%25b4%25d0%25b0-2`,
+    title: 'New Collection',
+    path: `${language === 'en' ? '/en' : ''}/category/ss26`,
   },
   {
     title: t('nav.sport'),
@@ -47,8 +43,8 @@ const getNavItems = (t: (key: string) => string, language: string): NavItem[] =>
     path: `${language === 'en' ? '/en' : ''}/category/%25d0%25b1%25d0%25b0%25d0%25b7%25d0%25be%25d0%25b2%25d0%25b0%25d1%258f-%25d0%25ba%25d0%25be%25d0%25bb%25d0%25bb%25d0%25b5%25d0%25ba%25d1%2586%25d0%25b8%25d1%258f`,
   },
   {
-    title: t('nav.kids'),
-    path: `${language === 'en' ? '/en' : ''}/category/%25d0%25b4%25d0%25b5%25d1%2582%25d1%2581%25d0%25ba%25d0%25b0%25d1%258f-%25d0%25be%25d0%25b4%25d0%25b5%25d0%25b6%25d0%25b4%25d0%25b0`,
+    title: t('nav.cruise'),
+    path: `${language === 'en' ? '/en' : ''}/category/kupalniki-new`,
   },
 ];
 
@@ -60,7 +56,7 @@ const Header = () => {
   const { t, language } = useTranslation();
   const navigate = useNavigate();
   const [isScrolled, setIsScrolled] = useState(false);
-  
+
   // Get navigation items with current language
   const navItems = getNavItems(t, language);
   const [openDropdown, setOpenDropdown] = useState<string | null>(null);
@@ -84,93 +80,8 @@ const Header = () => {
     return 0;
   };
 
-  // Calculate original (pre-discount) total to show discount line
-  const originalSubtotal = cart?.items?.reduce((sum: number, item: any) => sum + parseNumeric(item.unit_price) * item.quantity, 0) || 0;
-
-  const discountedTotalNumeric = (() => {
-    if (!cart?.total) return 0;
-    return parseNumeric(cart.total);
-  })();
-
-  const discountAmount = Math.max(originalSubtotal - discountedTotalNumeric, 0);
-
-  // Build per-item discount map
-  const discountMap = (() => {
-    const unitArr: {price: number; itemId: string}[] = [];
-    cart?.items.forEach((item) => {
-      const priceNum = parseNumeric(item.unit_price);
-      for (let i = 0; i < item.quantity; i++) {
-        unitArr.push({price: priceNum, itemId: item.id});
-      }
-    });
-
-    // Sort copies to decide discount distribution
-    const desc = [...unitArr].sort((a, b) => b.price - a.price);
-    const asc = [...unitArr].sort((a, b) => a.price - b.price);
-
-    const usedIndices = new Set<number>();
-    const discountPerUnit: number[] = new Array(unitArr.length).fill(0);
-
-    const findIndexNotUsed = (arr: {price:number;itemId:string}[], fromStart: boolean): number => {
-      if (fromStart) {
-        for (let i = 0; i < arr.length; i++) {
-          const idx = unitArr.indexOf(arr[i]);
-          if (!usedIndices.has(idx)) return idx;
-        }
-      } else {
-        for (let i = 0; i < arr.length; i++) {
-          const idx = unitArr.indexOf(arr[i]);
-          if (!usedIndices.has(idx)) return idx;
-        }
-      }
-      return -1;
-    };
-
-    // 10% off two most expensive units
-    if (unitArr.length >= 2) {
-      let count = 0;
-      for (let i = 0; i < desc.length && count < 2; i++) {
-        const idx = unitArr.indexOf(desc[i]);
-        if (!usedIndices.has(idx)) {
-          discountPerUnit[idx] = desc[i].price * 0.1;
-          usedIndices.add(idx);
-          count++;
-        }
-      }
-    }
-
-    // Cheapest free
-    if (unitArr.length >= 3) {
-      for (let i = 0; i < asc.length; i++) {
-        const idx = unitArr.indexOf(asc[i]);
-        if (!usedIndices.has(idx)) {
-          discountPerUnit[idx] = asc[i].price; // 100% off
-          usedIndices.add(idx);
-          break;
-        }
-      }
-    }
-
-    // 15% off second cheapest (i.e., cheapest remaining after free item)
-    if (unitArr.length >= 4) {
-      for (let i = 0; i < asc.length; i++) {
-        const idx = unitArr.indexOf(asc[i]);
-        if (!usedIndices.has(idx)) {
-          discountPerUnit[idx] = asc[i].price * 0.15;
-          usedIndices.add(idx);
-          break;
-        }
-      }
-    }
-
-    // Aggregate per itemId
-    const map: Record<string, number> = {};
-    unitArr.forEach((unit, idx) => {
-      if (!map[unit.itemId]) map[unit.itemId] = 0;
-      map[unit.itemId] += discountPerUnit[idx] || 0;
-    });
-    return map;
-  })();
+  // Simple total calculation - no discounts for EN version
+  const totalAmount = cart?.items?.reduce((sum: number, item: any) => sum + parseNumeric(item.unit_price) * item.quantity, 0) || 0;
 
   useEffect(() => {
     const handleScroll = () => {
@@ -204,7 +115,7 @@ const Header = () => {
   // Base classes
   const headerBaseClasses = "fixed top-0 left-0 right-0 z-30 transition-all duration-300 ease-in-out";
   // Conditional classes
-  const headerDynamicClasses = isHomePage 
+  const headerDynamicClasses = isHomePage
     ? "bg-transparent border-transparent" // Homepage: always transparent, no border
     : `${isScrolled ? 'shadow-md bg-white' : 'bg-white'} border-b border-gray-200`; // Other pages: normal behavior
 
@@ -216,8 +127,8 @@ const Header = () => {
   // The cart/likes count badges will have black background and white text, which is fine for both header styles.
   // The logo image will not change color based on these classes.
 
-  const logoSrc = isHomePage 
-    ? "https://zdqksnii.elementor.cloud/wp-content/uploads/2025/05/white-1.png" 
+  const logoSrc = isHomePage
+    ? "https://zdqksnii.elementor.cloud/wp-content/uploads/2025/05/white-1.png"
     : "https://zdqksnii.elementor.cloud/wp-content/uploads/2025/05/black-1.png";
 
   const handleCheckout = () => {
@@ -239,15 +150,15 @@ const Header = () => {
   };
 
   return (
-    <header 
+    <header
       className={`${headerBaseClasses} ${headerDynamicClasses}`}
     >
-              {/* Notification bar - only show on Russian pages */}
-        {language === 'ru' && (
-          <div className="w-full bg-[#99D6E9] text-black text-xs text-center py-1">
-            {t('common.vpnMessage')}
-          </div>
-        )}
+      {/* Notification bar - only show on Russian pages */}
+      {language === 'ru' && (
+        <div className="w-full bg-[#99D6E9] text-black text-xs text-center py-1">
+          {t('common.vpnMessage')}
+        </div>
+      )}
 
       <div className="w-full px-4 sm:px-6 lg:px-8 md:px-[45px]">
         <div className="flex justify-between items-center h-16 relative">
@@ -273,19 +184,19 @@ const Header = () => {
           {/* Desktop Navigation with Dropdowns */}
           <nav className="hidden md:flex space-x-1 items-center">
             {navItems.map((item) => (
-              <div 
-                key={item.title} 
+              <div
+                key={item.title}
                 className="relative group"
                 onMouseEnter={() => setOpenDropdown(item.title)}
                 onMouseLeave={() => setOpenDropdown(null)}
               >
-                <Link 
-                  to={item.path || '#'} 
+                <Link
+                  to={item.path || '#'}
                   className={`px-3 py-2 rounded-md text-sm font-medium focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-indigo-500 flex items-center
                     ${openDropdown === item.title && (item.subItems || item.megaMenuColumns) ? (isHomePage ? 'text-gray-300 underline' : 'text-gray-700 underline') : textColorClass} ${hoverTextColorClass}
                   `}
-                  onClick={(e) => { 
-                    if (!item.path && (item.subItems || item.megaMenuColumns)) e.preventDefault(); 
+                  onClick={(e) => {
+                    if (!item.path && (item.subItems || item.megaMenuColumns)) e.preventDefault();
                     if (item.path) setOpenDropdown(null);
                   }}
                 >
@@ -293,7 +204,7 @@ const Header = () => {
                   {(item.subItems || item.megaMenuColumns) && !item.path && <ChevronDown className={`inline w-4 h-4 ml-1 transition-transform duration-200 ${openDropdown === item.title ? 'transform rotate-180' : ''} ${iconColorClass}`} />}
                 </Link>
                 {openDropdown === item.title && (item.subItems || item.megaMenuColumns) && (
-                  <div 
+                  <div
                     ref={dropdownRef}
                     className="absolute left-0 mt-2 w-auto min-w-max bg-white border border-gray-200 rounded-md shadow-lg py-1 z-40"
                   >
@@ -315,8 +226,8 @@ const Header = () => {
                               const isTitle = subIndex === 0 && column.length > 1;
                               if (isTitle) {
                                 return (
-                                  <span 
-                                    key={subItem.title} 
+                                  <span
+                                    key={subItem.title}
                                     className="block pt-2 pb-2 text-sm font-semibold text-black select-none mb-1"
                                   >
                                     {subItem.title}
@@ -413,7 +324,7 @@ const Header = () => {
                 >
                   <span>{item.title}</span>
                   {(item.subItems || item.megaMenuColumns) && (
-                    <ChevronDown 
+                    <ChevronDown
                       className={`w-5 h-5 transform transition-transform duration-200 ${openMobileSubmenu === item.title ? 'rotate-180' : ''}`}
                     />
                   )}
@@ -443,7 +354,7 @@ const Header = () => {
                           const isTitle = subIndex === 0 && column.length > 1;
                           if (isTitle) {
                             return (
-                              <span 
+                              <span
                                 key={`${subItem.title}-title-${subIndex}`}
                                 className="block py-2 px-3 text-sm font-semibold text-black select-none"
                               >
@@ -461,7 +372,7 @@ const Header = () => {
                                   setOpenMobileSubmenu(null);
                                 }}
                               >
-                                {subItem.title} 
+                                {subItem.title}
                               </Link>
                             );
                           }
@@ -478,10 +389,10 @@ const Header = () => {
             <Link to={`${language === 'en' ? '/en' : ''}/`} className="block py-2 px-3 text-black hover:bg-gray-100 rounded-md" onClick={() => setIsMenuOpen(false)}>{t('nav.home')}</Link>
             <Link to={`${language === 'en' ? '/en' : ''}/about`} className="block py-2 px-3 text-black hover:bg-gray-100 rounded-md" onClick={() => setIsMenuOpen(false)}>{t('nav.about')}</Link>
             <Link to={`${language === 'en' ? '/en' : ''}/contact`} className="block py-2 px-3 text-black hover:bg-gray-100 rounded-md" onClick={() => setIsMenuOpen(false)}>{t('nav.contact')}</Link>
-            
+
             <hr className="my-2 border-gray-200" />
             <div className="flex justify-around items-center py-2 px-3">
-              <a href="https://web.whatsapp.com/send?phone=79268792878&text=" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp" className="text-black hover:text-gray-700">
+              <a href="https://web.whatsapp.com/send?phone=33640613269&text=" target="_blank" rel="noopener noreferrer" aria-label="WhatsApp" className="text-black hover:text-gray-700">
                 <MessageSquare size={24} />
               </a>
               <a href="https://t.me/swimwithleah" target="_blank" rel="noopener noreferrer" aria-label="Telegram" className="text-black hover:text-gray-700">
@@ -499,7 +410,7 @@ const Header = () => {
         aria-hidden={!isLikesMenuOpen}
       />
       <div
-        className={`fixed top-8 right-8 max-w-[400px] w-[90vw] max-h-[80vh] bg-white border border-gray-100 rounded-2xl shadow-2xl z-50 transition-opacity duration-300
+        className={`fixed top-8 right-8 max-w-[400px] w-[90vw] max-h-[80vh] bg-white border border-gray-100 rounded-2xl shadow-2xl z-50 transition-opacity duration-300 overflow-hidden flex flex-col
           ${isLikesMenuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
         aria-hidden={!isLikesMenuOpen}
       >
@@ -508,7 +419,7 @@ const Header = () => {
             <X size={20} />
           </button>
         </div>
-        <div className="px-4 pb-4 flex flex-col h-full">
+        <div className="px-4 pb-4 flex flex-col flex-1 min-h-0">
           <span className="text-base font-bold uppercase mb-2">{t('favorites.title')}</span>
           <div className="w-full h-px bg-gray-200 mb-2" />
           <div className="flex-1 overflow-y-auto flex flex-col">
@@ -562,7 +473,7 @@ const Header = () => {
         aria-hidden={!isCartDrawerOpen}
       />
       <div
-        className={`fixed top-8 right-8 max-w-[400px] w-[90vw] max-h-[80vh] bg-white border border-gray-100 rounded-2xl shadow-2xl z-50 transition-opacity duration-300
+        className={`fixed top-8 right-8 max-w-[400px] w-[90vw] max-h-[80vh] bg-white border border-gray-100 rounded-2xl shadow-2xl z-50 transition-opacity duration-300 overflow-hidden flex flex-col
           ${isCartDrawerOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none'}`}
         aria-hidden={!isCartDrawerOpen}
       >
@@ -571,16 +482,13 @@ const Header = () => {
             <X size={20} />
           </button>
         </div>
-        <div className="px-4 pb-0 flex flex-col h-full">
+        <div className="px-4 pb-0 flex flex-col flex-1 min-h-0">
           <span className="text-base font-bold uppercase mb-2">{t('cart.title')}</span>
           <div className="w-full h-px bg-gray-200 mb-2" />
           <div className="flex-1 overflow-y-auto">
             {cart?.items && cart.items.length > 0 ? (
               cart.items.map((item: any) => {
                 const priceNum = parseNumeric(item.unit_price);
-                const lineOriginal = priceNum * item.quantity;
-                const lineDiscount = discountMap[item.id] || 0;
-                const lineFinal = lineOriginal - lineDiscount;
                 return (
                   <div key={item.id} className="flex py-4 border-b border-gray-100 last:border-b-0 items-start">
                     <img
@@ -589,24 +497,14 @@ const Header = () => {
                       className="w-20 h-20 object-cover rounded border mr-4"
                     />
                     <div className="flex-1 flex flex-col items-start text-left">
-                      <DynamicText 
+                      <DynamicText
                         text={item.title}
                         tag="div"
                         className="font-semibold text-base mb-1"
                       />
                       <div className="text-sm text-black font-bold">
-                        {lineDiscount > 0 ? (
-                          <>
-                            <span className="line-through text-gray-400 mr-1">€{Math.trunc(lineOriginal)}</span>
-                            <span>€{Math.trunc(lineFinal)}</span>
-                          </>
-                        ) : (
-                          <>€{Math.trunc(lineOriginal)}</>
-                        )}
+                        €{Math.round(priceNum * item.quantity)}
                       </div>
-                      {lineDiscount > 0 && (
-                        <span className="text-xs text-green-600">-€{Math.trunc(lineDiscount)} (-{Math.round((lineDiscount/lineOriginal)*100)}%)</span>
-                      )}
                     </div>
                     <button
                       className="ml-2 text-gray-400 hover:text-black text-xl mt-1 p-1"
@@ -634,15 +532,9 @@ const Header = () => {
           <div className="pt-4 pb-6 bg-white sticky bottom-0 left-0 right-0 z-10">
             {cart?.items && cart.items.length > 0 && (
               <>
-                {discountAmount > 0 && (
-                  <div className="flex justify-between items-center mb-1 px-1">
-                    <span className="text-sm text-gray-600">{t('cart.discount')}</span>
-                    <span className="text-sm font-medium text-green-600">-€{discountAmount.toFixed(0)}</span>
-                  </div>
-                )}
                 <div className="flex justify-between items-center mb-3 px-1">
                   <span className="text-lg font-semibold">{t('cart.total')}</span>
-                  <span className="text-lg font-bold">€{Math.round(discountedTotalNumeric)}</span>
+                  <span className="text-lg font-bold">€{Math.round(totalAmount)}</span>
                 </div>
               </>
             )}

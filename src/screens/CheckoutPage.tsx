@@ -9,6 +9,7 @@ import { apiEndpoints } from '../utils/apiConfig';
 import { countries } from '../utils/countries';
 import { handlePhoneInput, getCleanPhoneNumber } from '../utils/phoneMask';
 import { initializePayPalButtons, PayPalOrderData } from '../utils/paypalIntegration';
+import AddressAutocomplete from '../components/AddressAutocomplete';
 
 // Helper to parse currency string to EUR number
 const parseCurrency = (currencyString: string): number => {
@@ -19,10 +20,10 @@ const CheckoutPage: React.FC = () => {
   const { cart, clearCart } = useCart(); // cart object contains cart.total and cart.items
   const navigate = useNavigate();
   const { t } = useTranslation();
-  
+
   // Fixed delivery cost for English version: 30 EUR
   const FIXED_DELIVERY_COST = 30;
-  
+
   const [form, setForm] = useState({
     first_name: '',
     last_name: '',
@@ -44,25 +45,37 @@ const CheckoutPage: React.FC = () => {
     window.scrollTo(0, 0);
   }, []);
 
+  // Reset PayPal buttons when form or cart changes so they re-initialize with fresh data
+  useEffect(() => {
+    if (paypalInitialized) {
+      // Clear previous PayPal buttons
+      const container = document.getElementById('paypal-button-container');
+      if (container) {
+        container.innerHTML = '';
+      }
+      paypalButtonsRef.current = false;
+      setPaypalInitialized(false);
+    }
+  }, [form.first_name, form.last_name, form.email, form.phone, form.address_1, form.city, form.postcode, form.country, cart?.total]);
+
   // Initialize PayPal buttons when form is valid and cart has items
   useEffect(() => {
     if (cart?.items && cart.items.length > 0 && !paypalButtonsRef.current) {
-      // Wait a bit for the container to be rendered, then initialize PayPal
+      const isFormValid = form.first_name && form.last_name && form.email && form.phone &&
+        form.address_1 && form.city && form.postcode && form.country;
+
+      if (!isFormValid) return;
+
       const timer = setTimeout(() => {
         const container = document.getElementById('paypal-button-container');
         if (container && !paypalInitialized) {
-          const isFormValid = form.first_name && form.last_name && form.email && form.phone && 
-                             form.address_1 && form.city && form.postcode && form.country;
-          
-          if (isFormValid) {
-            initializePayPalPayment();
-          }
+          initializePayPalPayment();
         }
-      }, 100);
-      
+      }, 300);
+
       return () => clearTimeout(timer);
     }
-  }, [form, cart]);
+  }, [form, cart, paypalInitialized]);
 
   const handleChange = (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) => {
     setForm({ ...form, [e.target.name]: e.target.value });
@@ -77,8 +90,8 @@ const CheckoutPage: React.FC = () => {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!cart || !cart.items || cart.items.length === 0) {
-        setError(t('checkout.emptyCartMessage'));
-        return;
+      setError(t('checkout.emptyCartMessage'));
+      return;
     }
     setError(null);
     // PayPal will handle the payment, we just need to initialize it
@@ -89,7 +102,7 @@ const CheckoutPage: React.FC = () => {
 
   const initializePayPalPayment = async () => {
     if (paypalButtonsRef.current) return;
-    
+
     paypalButtonsRef.current = true;
     setError(null);
 
@@ -227,7 +240,7 @@ const CheckoutPage: React.FC = () => {
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center py-24 px-4 sm:px-6 lg:px-8">
       <div className="w-full max-w-5xl mx-auto">
-        
+
         <div className="md:grid md:grid-cols-5 md:gap-x-8 lg:gap-x-12">
           {/* Left Card: Form */}
           <div className="md:col-span-3 bg-white p-4 sm:p-6 rounded-xl shadow-lg mb-8 md:mb-0">
@@ -246,11 +259,28 @@ const CheckoutPage: React.FC = () => {
               </div>
               <div>
                 <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">{t('form.phone')} *</label>
-                <input name="phone" id="phone" value={form.phone} onChange={handlePhoneChange} type="tel" required className="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm p-2.5" placeholder="+1 (XXX) XXX-XX-XX"/>
+                <input name="phone" id="phone" value={form.phone} onChange={handlePhoneChange} type="tel" required className="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm p-2.5" placeholder="+1 (XXX) XXX-XX-XX" />
               </div>
               <div>
                 <label htmlFor="address_1" className="block text-sm font-medium text-gray-700 mb-1">{t('form.address')} *</label>
-                <input name="address_1" id="address_1" value={form.address_1} onChange={handleChange} type="text" required className="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm p-2.5" />
+                <AddressAutocomplete
+                  name="address_1"
+                  id="address_1"
+                  value={form.address_1}
+                  onChange={(val) => setForm({ ...form, address_1: val })}
+                  onSelect={(address, city, postcode) => {
+                    setForm(prev => ({
+                      ...prev,
+                      address_1: address,
+                      ...(city ? { city } : {}),
+                      ...(postcode ? { postcode } : {}),
+                    }));
+                  }}
+                  lang="en"
+                  required
+                  placeholder="Start typing your address..."
+                  className="w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 sm:text-sm p-2.5"
+                />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
                 <div>
@@ -289,28 +319,29 @@ const CheckoutPage: React.FC = () => {
               {cart?.items && cart.items.length > 0 ? (
                 (() => {
                   // Compute per-item discount map similar to header
-                  const unitArr: {price: number; itemId: string}[] = [];
+                  const unitArr: { price: number; itemId: string }[] = [];
                   cart.items.forEach((itm: any) => {
                     const pNum = parseCurrency(itm.unit_price);
-                    for (let i = 0; i < itm.quantity; i++) unitArr.push({price: pNum, itemId: itm.id});
+                    for (let i = 0; i < itm.quantity; i++) unitArr.push({ price: pNum, itemId: itm.id });
                   });
                   const desc = [...unitArr].sort((a, b) => b.price - a.price);
                   const asc = [...unitArr].sort((a, b) => a.price - b.price);
                   const used = new Set<number>();
                   const perUnitDisc: number[] = new Array(unitArr.length).fill(0);
                   // 10% on top two
-                  if (unitArr.length >=2) {
-                    let c=0; for(let i=0;i<desc.length&&c<2;i++){const idx=unitArr.indexOf(desc[i]);if(!used.has(idx)){perUnitDisc[idx]=desc[i].price*0.1;used.add(idx);c++;}}
+                  if (unitArr.length >= 2) {
+                    let c = 0; for (let i = 0; i < desc.length && c < 2; i++) { const idx = unitArr.indexOf(desc[i]); if (!used.has(idx)) { perUnitDisc[idx] = desc[i].price * 0.1; used.add(idx); c++; } }
                   }
                   // cheapest free
-                  if(unitArr.length>=3){for(let i=0;i<asc.length;i++){const idx=unitArr.indexOf(asc[i]);if(!used.has(idx)){perUnitDisc[idx]=asc[i].price;used.add(idx);break;}}
+                  if (unitArr.length >= 3) {
+                    for (let i = 0; i < asc.length; i++) { const idx = unitArr.indexOf(asc[i]); if (!used.has(idx)) { perUnitDisc[idx] = asc[i].price; used.add(idx); break; } }
                   }
                   // 15% off second cheapest (cheapest remaining after free item)
-                  if(unitArr.length>=4){
-                    for(let i=0;i<asc.length;i++){
-                      const idx=unitArr.indexOf(asc[i]);
-                      if(!used.has(idx)){
-                        perUnitDisc[idx]=asc[i].price*0.15;
+                  if (unitArr.length >= 4) {
+                    for (let i = 0; i < asc.length; i++) {
+                      const idx = unitArr.indexOf(asc[i]);
+                      if (!used.has(idx)) {
+                        perUnitDisc[idx] = asc[i].price * 0.15;
                         used.add(idx);
                         break;
                       }
@@ -321,7 +352,7 @@ const CheckoutPage: React.FC = () => {
                     discMap[u.itemId] = (discMap[u.itemId] || 0) + perUnitDisc[idx];
                   });
                   return cart.items.map((item: any) => {
-                    const orig = parseCurrency(item.unit_price)*item.quantity;
+                    const orig = parseCurrency(item.unit_price) * item.quantity;
                     const disc = discMap[item.id] || 0;
                     const final = orig - disc;
                     return (
@@ -332,7 +363,7 @@ const CheckoutPage: React.FC = () => {
                           className="w-16 h-20 object-cover rounded-md border border-gray-200 mr-4"
                         />
                         <div className="flex-1 min-w-0">
-                          <DynamicText 
+                          <DynamicText
                             text={item.title}
                             tag="p"
                             className="text-sm font-medium text-gray-800 truncate"
@@ -340,13 +371,13 @@ const CheckoutPage: React.FC = () => {
                           <p className="text-xs text-gray-500 mt-0.5">{t('common.quantity')}: {item.quantity}</p>
                         </div>
                         <div className="text-sm font-medium text-gray-800 ml-4 whitespace-nowrap flex flex-col items-end">
-                          {disc>0 ? (
+                          {disc > 0 ? (
                             <>
                               <span className="line-through text-gray-400 text-xs">€{Math.trunc(orig)}</span>
                               <span>€{Math.trunc(final)}</span>
-                              <span className="text-xs text-green-600 ml-1">(-{Math.round(disc/orig*100)}%)</span>
+                              <span className="text-xs text-green-600 ml-1">(-{Math.round(disc / orig * 100)}%)</span>
                             </>
-                          ): (
+                          ) : (
                             <span>€{Math.trunc(orig)}</span>
                           )}
                         </div>
@@ -358,7 +389,7 @@ const CheckoutPage: React.FC = () => {
                 <p className="text-sm text-gray-500 text-center py-4">{t('checkout.emptyCart')}</p>
               )}
             </div>
-            
+
             {cart?.items && cart.items.length > 0 && (
               <div className="border-t border-gray-200 pt-6 space-y-3">
                 {(() => {
@@ -396,9 +427,9 @@ const CheckoutPage: React.FC = () => {
                 {/* PayPal Button Container */}
                 <div id="paypal-button-container" className="w-full mb-4"></div>
                 {!paypalInitialized && (
-                  <Button 
-                    form="checkout-form" 
-                    type="submit" 
+                  <Button
+                    form="checkout-form"
+                    type="submit"
                     className="w-full bg-black hover:bg-gray-800 text-white font-semibold py-3 px-4 rounded-lg shadow-md transition duration-150 ease-in-out flex items-center justify-center"
                     disabled={loading || !cart || !cart.items || cart.items.length === 0}
                   >

@@ -13,6 +13,7 @@ import { convertAndFormatPrice } from '../utils/priceUtils';
 import { LoadingWrapper } from '../components/LoadingWrapper';
 import { TranslatedHTML } from '../components/TranslatedHTML';
 import { apiEndpoints } from '../utils/apiConfig';
+import { getColorHex } from '../utils/colorMap';
 
 interface MediaItem {
   type: 'image' | 'video';
@@ -507,87 +508,7 @@ export const ProductPage = (): JSX.Element => {
     setExpandedSection(expandedSection === section ? null : section);
   };
 
-  // Color mapping function
-  const getColorHex = (colorName: string) => {
-    const colorMap: { [key: string]: string } = {
-      'princess blue': '#4169E1',
-      'fantasie sunset': '#FF7F50',
-      'fantasie black and white': '#000000',
-      'meow blue': '#1E90FF',
-      'infinity': '#639BB9',
-      'fantasy': '#B12D31',
-      'anchor': '#F7A98C',
-      'swim': '#98DCC2',
-      'biscay green': '#1B4D3E',
-      'sakura': '#FFB7C5',
-      'peacock blue': '#004D98',
-      'bitter orange': '#FF6B00',
-      'espresso': '#4B3621',
-      'electric blue': '#0000FF',
-      'deep green': '#006400',
-      'cornflower': '#6495ED',
-      'terracotta': '#E2725B',
-      'olive': '#808000',
-      'mint': '#98FF98',
-      'coral': '#FF7F50',
-      'burgundy': '#800020',
-      'navy': '#000080',
-      'beige': '#F5F5DC',
-      'brown': '#A52A2A',
-      'grey': '#808080',
-      'gray': '#808080',
-      'orange': '#FFA500',
-      'purple': '#800080',
-      'pink': '#F6A7E5',
-      'yellow': '#FFFF00',
-      'green': '#25CD96',
-      'blue': '#42B1EA',
-      'red': '#FF0000',
-      'white': '#FFFFFF',
-      'black': '#000000',
-      'natural': '#F0E68C',
-      'коралл': '#C9313E',
-      'фиолетовый': '#800080',
-      'чёрный': '#000000',
-      'коралл черный': '#4A4A4A',
-      'avorio mocaccino': '#27CE5E',
-      'jelly bean': '#05936C',
-      'lilac': '#C8A2C8',
-      'sicilia': '#E3DA73',
-      'infiniti caribi': '#0CB7E7',
-      'babydoll': '#B1E2C3',
-      'nero redcoat': '#9B2633',
-      'anchor clie': '#FDB6B3',
-      'tie die lime': '#D9D56A',
-      'paisley light blue': '#6CC6F1',
-      'paisley light blue / pink': '#3E82E0',
-      'tie die lime blue': '#EFEC99',
-      'swim / babydoll': '#7AD5A1',
-      'new blue irlandia': '#3CC181',
-      'fantasy sunset фиолетовый': '#EFCCE1',
-      'lime': '#ADC251',
-      'tie-dye lime lime': '#ADC251',
-      'illusion / peakock blue': '#02ADB7',
-      'голубой': '#D4EDF9',
-      'honey': '#DFBD77',
-      'цитрин - аметист': '#A76FC5',
-      'цитрин - гранат': '#9D0F30',
-      'бирюза': '#81C8D3',
-      'leah ropes': '#045AAE',
-      'ocean life': '#F87624',
-    };
-    const lowerColorName = colorName.toLowerCase();
-    if (colorMap[lowerColorName]) {
-      return colorMap[lowerColorName];
-    }
-    const partialMatch = Object.entries(colorMap).find(([key]) =>
-      lowerColorName.includes(key)
-    );
-    if (partialMatch) {
-      return partialMatch[1];
-    }
-    return '#CCCCCC'; // Default color if no match
-  };
+  // Color mapping function - using shared utility
 
   if (loading) {
     return (
@@ -771,9 +692,7 @@ export const ProductPage = (): JSX.Element => {
                   </button>
                 ))}
               </div>
-              {selectedColor && (
-                <div className="mt-2 text-sm text-gray-600">{t('common.selectedColor')}: <span className="font-semibold">{selectedColor}</span></div>
-              )}
+
             </div>
           )}
 
@@ -887,11 +806,6 @@ export const ProductPage = (): JSX.Element => {
             ))}
           </div>
         </div>
-      </div>
-
-      {/* Wrapper for Related Products Slider to align with page content */}
-      <div className="w-full md:max-w-7xl md:mx-auto md:px-[30px] mb-8">
-        <RelatedProductsSlider products={relatedProducts} loading={loadingRelated} title={t('related.title', 'You might also like')} />
       </div>
 
       {/* Size Chart Modal */}

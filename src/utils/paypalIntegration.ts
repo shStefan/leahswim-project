@@ -1,5 +1,7 @@
 // PayPal Integration for English Version
-// PayPal Client ID - Replace with your actual PayPal Client ID from PayPal Developer Dashboard
+import { parseCurrencyEUR } from './priceUtils';
+
+// PayPal Client ID
 export const PAYPAL_CLIENT_ID = 'AU23b6phBDxjcgb7iaT7Lgztx8N02zV7cZjO3_HxIaN8PXsLNAfhW64n6dDHxOJLEDOgtYEJUjyTcIoq';
 
 // PayPal script loader
@@ -12,7 +14,7 @@ export const loadPayPalScript = (): Promise<boolean> => {
     }
 
     const script = document.createElement('script');
-    script.src = `https://www.paypal.com/sdk/js?client-id=${PAYPAL_CLIENT_ID}&currency=EUR`;
+    script.src = `https://www.paypal.com/sdk/js?client-id=${PAYPAL_CLIENT_ID}&currency=EUR&enable-funding=applepay`;
     script.async = true;
     script.onload = () => {
       if (window.paypal) {
@@ -66,27 +68,28 @@ export const initializePayPalButtons = async (
     }
 
     const { cart, form, deliveryCost, onApprove, onError, onCancel } = orderData;
-    const totalAmount = parseFloat(cart.total || '0') + deliveryCost;
 
-    // Calculate total amount (subtotal + delivery)
-    const items = cart.items.map((item: any) => ({
-      name: item.title || 'Product',
-      unit_amount: {
-        currency_code: 'EUR',
-        value: parseFloat(item.unit_price || '0').toFixed(2),
-      },
-      quantity: item.quantity || 1,
-    }));
+    // Parse the discounted cart total using parseCurrencyEUR (handles €-prefixed and RUB strings)
+    const cartSubtotal = parseCurrencyEUR(cart.total);
+    const totalAmount = cartSubtotal + deliveryCost;
 
-    // Add delivery as an item
-    items.push({
-      name: 'Delivery',
-      unit_amount: {
-        currency_code: 'EUR',
-        value: deliveryCost.toFixed(2),
-      },
-      quantity: 1,
+    // Build product items with correctly parsed EUR prices
+    const items = cart.items.map((item: any) => {
+      const unitPriceEUR = parseCurrencyEUR(item.unit_price);
+      return {
+        name: item.title || 'Product',
+        unit_amount: {
+          currency_code: 'EUR',
+          value: unitPriceEUR.toFixed(2),
+        },
+        quantity: String(item.quantity || 1),
+      };
     });
+
+    // Calculate the sum of all item amounts for the breakdown
+    const itemTotal = items.reduce((sum: number, item: any) => {
+      return sum + parseFloat(item.unit_amount.value) * parseInt(item.quantity, 10);
+    }, 0);
 
     window.paypal
       .Buttons({
@@ -106,7 +109,15 @@ export const initializePayPalButtons = async (
                   breakdown: {
                     item_total: {
                       currency_code: 'EUR',
-                      value: totalAmount.toFixed(2),
+                      value: itemTotal.toFixed(2),
+                    },
+                    shipping: {
+                      currency_code: 'EUR',
+                      value: deliveryCost.toFixed(2),
+                    },
+                    discount: {
+                      currency_code: 'EUR',
+                      value: Math.max(itemTotal + deliveryCost - totalAmount, 0).toFixed(2),
                     },
                   },
                 },
@@ -133,7 +144,7 @@ export const initializePayPalButtons = async (
           try {
             const order = await actions.order.capture();
             console.log('[PayPal] Payment approved:', order);
-            
+
             if (order.status === 'COMPLETED' || order.status === 'APPROVED') {
               await onApprove(order.id, order);
             } else {

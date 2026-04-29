@@ -15,8 +15,19 @@ import ScrollToTop from './components/ScrollToTop';
 import { TranslationProvider } from './context/TranslationContext';
 import { YandexFeedGenerator } from './components/YandexFeedGenerator';
 import CookieConsent from './components/CookieConsent';
+import { StickyChatButton } from './components/StickyChatButton';
+import { checkAndClearCache } from './utils/clearCache';
+import { useEffect } from 'react';
+
+// Increment this version when deploying to force cache refresh for all users
+const APP_VERSION = '3.0.0';
 
 function App() {
+  // Clear cache on app initialization if version changed
+  useEffect(() => {
+    checkAndClearCache(APP_VERSION);
+  }, []);
+
   // Disabled PromoModal for English version
   // const [showPromo, setShowPromo] = useState(true);
 
@@ -53,6 +64,7 @@ function App() {
               <Footer />
             </div>
             <CookieConsent />
+            <StickyChatButton />
           </Router>
         </LikesProvider>
       </CartProvider>

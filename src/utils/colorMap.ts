@@ -1,0 +1,563 @@
+/**
+ * Comprehensive color hex map for all pa_print attribute terms + product-level color options.
+ * Used by ProductPage, CategorySpecificPage, CataloguePage, and SelectedFiltersDisplay for swatch rendering.
+ */
+const COLOR_MAP: { [key: string]: string } = {
+  // ══════════════════════════════════════════════
+  // ENGLISH COLOR NAMES
+  // ══════════════════════════════════════════════
+
+  // ── Core solid colors ──
+  'black': '#000000',
+  'white': '#FFFFFF',
+  'red': '#FF0000',
+  'blue': '#42B1EA',
+  'green': '#25CD96',
+  'yellow': '#FFFF00',
+  'orange': '#FFA500',
+  'pink': '#F6A7E5',
+  'purple': '#800080',
+  'brown': '#A52A2A',
+  'grey': '#808080',
+  'gray': '#808080',
+  'beige': '#F5F5DC',
+  'navy': '#000080',
+  'coral': '#FF7F50',
+  'lime': '#ADC251',
+  'mint': '#98FF98',
+  'olive': '#808000',
+  'magenta': '#FF00FF',
+  'lilac': '#C8A2C8',
+  'natural': '#F0E68C',
+  'honey': '#DFBD77',
+  'lava': '#CF1020',
+  'lotus': '#E8B4CB',
+  'myrrh': '#C9A96E',
+  'palm': '#4CA55B',
+  'bell': '#E8D44D',
+
+  // ── Named English print/pattern colors ──
+  'anchor': '#F7A98C',
+  'anchor / bitter orange': '#F7A98C',
+  'anchor / cile': '#FDB6B3',
+  'anchor clie': '#FDB6B3',
+  'avorio mocaccino': '#27CE5E',
+  'babydoll': '#B1E2C3',
+  'biscay green': '#1B4D3E',
+  'bitter': '#FF6B00',
+  'bitter orange': '#FF6B00',
+  'bitter orange / black': '#FF4500',
+  'bitter orange / fiery red': '#E34234',
+  'bitter velvet': '#8B2500',
+  'black hat': '#1A1A1A',
+  'blue checks': '#5B9BD5',
+  'blue checks dreamland': '#6BAED6',
+  'blue checks pinkaboo': '#7CB9E8',
+  'blue monograme': '#3A5BA0',
+  'blue monograme new blue': '#2196F3',
+  'blue monograme pink monograme': '#9C5BA0',
+  'blue monograme princess blue': '#4169E1',
+  'brown stripes': '#8B5E3C',
+  'brown stripes frozen': '#A07050',
+  'brown stripes pinkaboo': '#B88B7A',
+  'brown sugar': '#A0522D',
+  'burgundy': '#800020',
+  'chin-chin red chin-chin yellow': '#E8453C',
+  'chin-chin yellow chin-chin pink': '#F2C94C',
+  'clementina': '#E8862A',
+  'clementina / sprint': '#E8862A',
+  'coral / frozen': '#FF8F7F',
+  'coral / princess blue': '#ED6A7A',
+  'coral princess blue': '#ED6A7A',
+  'cornflower': '#6495ED',
+  'couturier': '#D4A5A5',
+  'deep green': '#006400',
+  'electric blue': '#0000FF',
+  'espresso': '#4B3621',
+  'fantaisie black and white чёрный': '#333333',
+  'fantasie sunset фиолетовый': '#EFCCE1',
+  'fantasie sunset': '#FF7F50',
+  'fantasie black and white': '#000000',
+  'fantasy': '#B12D31',
+  'fantasy / biscay green': '#2E6B5A',
+  'fantasy / bitter orange': '#D04A1F',
+  'fiery red': '#CE2029',
+  'fragola / lotus': '#E57373',
+  'fragola lotus': '#E57373',
+  'frozen shine': '#B3E5FC',
+  'gossip': '#D5C5DF',
+  'green lemons terracot lemons': '#8FBC4A',
+  'hamsa / cristallo': '#B8D5E0',
+  'hollywood / cristallo': '#E0C8B5',
+  'illusion': '#7ECFC0',
+  'illusion / black': '#4A9A8A',
+  'illusion / new blue': '#4DB8C4',
+  'illusion / peakock blue': '#02ADB7',
+  'infinity': '#639BB9',
+  'infinity / carabi': '#0CB7E7',
+  'infinity / peacock blue': '#005F8A',
+  'infinity / princess blue': '#4080C0',
+  'infiniti caribi': '#0CB7E7',
+  'irlanda / princess blue': '#3C7A4F',
+  'jelly bean': '#05936C',
+  'lady bug': '#E22C2C',
+  'lady bug fragola': '#D03040',
+  'leah ropes': '#045AAE',
+  'leah ropes redcoat': '#7B2D3A',
+  'light blue': '#ADD8E6',
+  'lima': '#76C043',
+  'lotus fragola': '#E57373',
+  'meow blue': '#1E90FF',
+  'myrrh sicilia': '#C4A050',
+  'nero redcoat': '#9B2633',
+  'new blue irlandia': '#42B1EA',
+  'ocean life': '#F87624',
+  'ocean life irlandia': '#3CB371',
+  'orange waves': '#F4A460',
+  'orange waves brown sugar': '#CD853F',
+  'orange waves cile': '#E8A872',
+  'orange waves yellow waves': '#F5C842',
+  'outofspace / chiringuito': '#1C1C3A',
+  'paisley black': '#2C2C2C',
+  'paisley grey melange': '#9E9E9E',
+  'paisley light blue': '#6CC6F1',
+  'paisley light blue / light blue': '#87CEEB',
+  'paisley light blue / pink': '#3E82E0',
+  'paisley light pink': '#FFB6C1',
+  'paisley orange': '#E8732A',
+  'palm / orangina': '#6BBF4E',
+  'palm orangina': '#6BBF4E',
+  'peacock blue': '#004D98',
+  'peacock blue / bitter orange': '#2E6B8A',
+  'peacock blue / sakura': '#3C7A9E',
+  'pink monogram / blue monogram': '#E8AECF',
+  'pink monograme': '#E8AECF',
+  'pink monograme fiery red': '#D45070',
+  'pink monograme redcoat': '#C0506A',
+  'pink stripes': '#FFB6C1',
+  'pink stripes brown stripes': '#D4A0A0',
+  'pink stripes brwon stripes': '#D4A0A0',
+  'pink stripes carabi': '#E8B4D0',
+  'pinkaboo': '#FFD1DC',
+  'princess blue': '#4169E1',
+  'rihanna': '#C41E3A',
+  'sakura': '#FFB7C5',
+  'shine verde band': '#2E8B57',
+  'sicilia': '#E3DA73',
+  'sicilia lava': '#D4A040',
+  'starfish': '#FC8A5E',
+  'starfish dreamland': '#F4A98C',
+  'stargaze / sprint': '#2C3E6B',
+  'swim': '#98DCC2',
+  'swim / babydoll': '#7AD5A1',
+  'swim / sakura': '#8ECFB5',
+  'terracotta': '#E2725B',
+  'tie-dye blue': '#5DADE2',
+  'tie-dye lime': '#C5E17A',
+  'tie-dye lime / blue': '#A8D050',
+  'tie-dye lime / lime': '#ADC251',
+  'tie die lime': '#D9D56A',
+  'tie die lime blue': '#EFEC99',
+  'tie-dye lime lime': '#ADC251',
+  'turqoise': '#40E0D0',
+  'turquoise': '#40E0D0',
+  'white / black': '#E0E0E0',
+  'white lemons yellow lemons': '#FFFACD',
+  'witch / chiringuito': '#4A3B5E',
+  'yellow checks': '#F7E84A',
+  'yellow checks blue checks': '#E8D54A',
+  'yellow checks lilac': '#E8D5A0',
+  'yellow checks witch': '#D4C44A',
+  'yellow waves': '#F5D033',
+  'yellow waves biscay green': '#B8CC40',
+  'yellow waves brown sugar': '#D4B040',
+  'yellow waves stardust': '#E8D44D',
+  'zodiac / princess blue': '#3B4FA0',
+
+  // ══════════════════════════════════════════════
+  // RUSSIAN COLOR NAMES (product attribute options)
+  // ══════════════════════════════════════════════
+
+  // ── А ──
+  'апельсиновые волны': '#F4A460',
+  'апельсиновые волны   перец чили': '#E85030',
+
+  // ── Б ──
+  'бархатная фуксия': '#C71585',
+  'бархатные сплетни': '#D5C5DF',
+  'бархатный горький апельсин': '#D4500A',
+  'бархатный кутюр': '#C4A070',
+  'бежевый': '#F5F5DC',
+  'бежевый / коричневый': '#D4A76A',
+  'бежевый   цветочная сила, розовый': '#F5DDE0',
+  'белоснежный   глубокий чёрный': '#E0E0E0',
+  'белый мокка': '#F5F0E8',
+  'белый': '#FFFFFF',
+  'бесконечность': '#639BB9',
+  'бесконечность   кариби': '#0CB7E7',
+  'бесконечность   королевский голубой': '#4080C0',
+  'бесконечность   синий павлин': '#005F8A',
+  'бирюза': '#81C8D3',
+  'бирюзовый': '#40E0D0',
+  'бирюзовый бронзовый': '#30B0A0',
+  'бискайская зелень': '#1B4D3E',
+  'бордо крем брюле': '#8C2040',
+  'брауни': '#6B3A2A',
+  'бронзовый изумрудный': '#3A7040',
+  'бургунди': '#800020',
+
+  // ── В ──
+  'васильковый': '#6495ED',
+  'вне космоса': '#1C1C3A',
+  'вне космоса   чирингито': '#1C1C3A',
+  'волны': '#4A90D0',
+
+  // ── Г ──
+  'глубокий зеленый': '#006400',
+  'голливуд   кристалл': '#E0C8B5',
+  'голубой': '#D4EDF9',
+  'голубой  синий': '#5CA0D0',
+  'голубой желтый': '#80C8D0',
+  'голубой оранжевый': '#80B8C0',
+  'голубой синий': '#5CA0D0',
+  'горчица': '#E1A040',
+  'горький апельсин': '#FF6B00',
+  'горький апельсин   глубокий чёрный': '#D04A00',
+  'горький апельсин   огненно-красный': '#E34234',
+  'горький апельсин   фантазия': '#D05030',
+
+  // ── Ж ──
+  'желтый': '#FFFF00',
+  'желтый золотистый': '#FFD700',
+  'желтый павлин': '#C8B030',
+  'желтый павлин   джокер': '#C0A830',
+  'жёлтая клетка': '#F7E84A',
+  'жёлтая клетка   сиреневый туман': '#E0D060',
+  'жёлтая клетка   фиолетовая вспышка': '#D8C850',
+  'жёлтый': '#F5D033',
+  'жёлтые волны': '#F5D033',
+  'жёлтые волны   звездная пыль': '#E8D44D',
+
+  // ── З ──
+  'звездный взгляд': '#2C3E6B',
+  'звездный взгляд   спринт': '#2C3E6B',
+  'зебра': '#4A3B5E',
+  'зебра   чирингито': '#4A3B5E',
+  'зеленый': '#25CD96',
+  'зеленый leo': '#2E8B57',
+  'зеленый бронзовый': '#3A7040',
+  'зеленый фиолетовый': '#4A7068',
+  'зодиак': '#3B4FA0',
+  'зодиак   королевский синий': '#3B4FA0',
+
+  // ── И ──
+  'изумруд': '#50C878',
+  'иллюзия   чёрный': '#4A9A8A',
+  'ирландия   королевский синий': '#3C7A4F',
+
+  // ── К ──
+  'карамельные полосы': '#8B5E3C',
+  'карамельные полосы   ледяное сияние': '#8B7060',
+  'кариби   чирингито': '#0CB7E7',
+  'клементина   спринт': '#E8862A',
+  'коралл': '#C9313E',
+  'коралл черный': '#4A4A4A',
+  'коричневый': '#8B4513',
+  'красный': '#FF0000',
+  'красный розовый': '#E04060',
+  'креветки': '#F4A080',
+
+  // ── Л ──
+  'лайм': '#ADC251',
+  'лайм   тай-дай лайм': '#B8CC50',
+  'леди баг': '#E22C2C',
+  'леди баг   фрагола': '#D03040',
+  'ледяное сияние': '#B3E5FC',
+  'ленивый лео, бирюзовый': '#40C0B0',
+  'ленивый лео, желтый': '#E8D060',
+  'ленивый лео, сиреневый': '#C0A0D0',
+  'ленивый лео, фиолетовый': '#7B4FA0',
+  'леопард': '#C4A050',
+  'леопард   ультрафиолет': '#8040B0',
+  'лиловый': '#C8A2C8',
+  'лотос': '#E8B4CB',
+
+  // ── М ──
+  'ментоловый': '#98FF98',
+  'мирра': '#C9A96E',
+  'мирра   сицилия': '#C4A050',
+  'мокка': '#6B4030',
+  'молочный': '#FFFDD0',
+  'морское купание': '#98DCC2',
+  'морское купание   бэбидолл': '#7AD5A1',
+  'морской якорь': '#F7A98C',
+  'морской якорь   горький апельсин': '#F7A98C',
+  'мятный': '#98FF98',
+  'мятный волны': '#80E0C0',
+  'мятный лиловый': '#90D0C0',
+
+  // ── Н ──
+  'неро   алый мундир': '#9B2633',
+  'новый океан   ирландская зелень': '#42B1EA',
+
+  // ── О ──
+  'оливковый': '#808000',
+  'оливковый желтый': '#908030',
+  'оранжевый': '#FFA500',
+  'оранжевый бледно-розовый': '#F0A080',
+  'оранжевый ракушки': '#E89060',
+  'оранжевый розовый': '#F09070',
+
+  // ── П ──
+  'пальмы': '#4CA55B',
+  'пейсли розовый': '#FFB6C1',
+  'пейсли светло-голубой': '#6CC6F1',
+  'пейсли светло-голубой   пейсли розовый': '#3E82E0',
+  'песочный беж   горький апельсин': '#D4A060',
+
+  // ── Р ──
+  'ракушки': '#F4C8A0',
+  'раннее утро   ультрафиолет': '#8040A0',
+  'розовая монограмма    огненно-красный': '#D45070',
+  'розовая монограмма   синяя монограмма': '#E8AECF',
+  'розовые полосы': '#FFB6C1',
+  'розовые полосы   карамельные полосы': '#D4A0A0',
+  'розовые полосы   кариби': '#E8B4D0',
+  'розовый': '#F6A7E5',
+  'розовый креветки': '#F0A0B0',
+
+  // ── С ──
+  'сакура': '#FFB7C5',
+  'салатовый лиловый': '#A0D080',
+  'сардины': '#5A8AAA',
+  'светлая фуксия': '#FF77C0',
+  'светло-голубой': '#ADD8E6',
+  'светло-голубой   пейсли светло-голубой': '#87CEEB',
+  'сила цветов, зеленый': '#3CB371',
+  'сила цветов, ментол': '#70DBA0',
+  'сила цветов, розовый': '#F090B0',
+  'сила цветов, фиолетовый': '#8060C0',
+  'синий': '#2753D8',
+  'синий зеленый': '#2E8B8B',
+  'синий павлин': '#004D98',
+  'синий павлин   бесконечность': '#2E6B8A',
+  'синий павлин   горький апельсин': '#2E6B8A',
+  'синий павлин   сакура': '#3C7A9E',
+  'синий сардины': '#3A6090',
+  'синий хаки': '#3A5050',
+  'синяя клетка': '#5B9BD5',
+  'синяя клетка   страна грёз': '#6BAED6',
+  'синяя монограмма    королевский голубой': '#3A5BA0',
+  'сиреневый фиолетовый': '#B060C0',
+  'сицилия': '#E3DA73',
+  'сицилия   джокер': '#D4C060',
+  'слоновая кость   мокачино': '#FFFFF0',
+
+  // ── Т ──
+  'тай-дай лайм': '#C5E17A',
+  'тай-дай лайм   тай-дай фиолетовый': '#A0C060',
+  'тай-дай фиолетовый': '#9060C0',
+  'тайна в розовом': '#E8A0C0',
+  'темно красный черный': '#8B0000',
+  'темно-оливковый': '#556B2F',
+  'темно-розовый': '#C71585',
+  'терракотовый': '#E2725B',
+  'тростниковый сахар': '#A0522D',
+
+  // ── Ф ──
+  'фантазия': '#B12D31',
+  'фантазия   новый океан': '#8A3040',
+  'фиолетовая вспышка   чирингито': '#7040A0',
+  'фиолетовый': '#800080',
+  'фрагола   страна грёз': '#E57373',
+  'фуксия': '#FF00FF',
+
+  // ── Х ──
+  'хаки': '#6B8E23',
+  'хаки коричневый': '#5A5530',
+  'хамса': '#B8D5E0',
+  'хамса   кристалл': '#B8D5E0',
+
+  // ── Ц ──
+  'цитрин - аметист': '#A76FC5',
+  'цитрин - гранат': '#9D0F30',
+  'цитрин – гранат': '#9D0F30',
+
+  // ── Ч ──
+  'черно-белый мокко': '#4A4040',
+  'черный белый': '#1A1A1A',
+  'черный красный': '#2A0000',
+  'черный серый': '#333333',
+  'чёрный': '#000000',
+
+  // ── Э ──
+  'электрический синий': '#0000FF',
+  'эспрессо': '#4B3621',
+
+  // ── Я ──
+  'ярко синий зеленый': '#00A0A0',
+
+  // ── SS26 Новая коллекция ──
+  'бежевый коричневый': '#C8A882',
+  'бежевый терракот': '#D4946A',
+  'белый бежевый': '#FAF0E6',
+  'бирюзовый белый': '#7ED4C8',
+  'бирюзовый серый': '#6AAFAA',
+  'голубой розовый': '#A8B8D0',
+  'голубой  розовый': '#A8B8D0',
+  'голубой бежевый': '#A0C0D0',
+  'коричневый темно-коричневый': '#6B4226',
+  'лавандовый': '#B57EDC',
+  'персиковый': '#FFCBA4',
+  'розовый бежевый': '#E8B8B0',
+  'розовый голубой': '#D0A0C0',
+  'розовый коричневый': '#C09088',
+  'салатовый': '#7CFC00',
+  'серо-голубой': '#8CA8C0',
+  'серо-голубой серый': '#8098A8',
+  'серо-зеленый': '#7A8B6A',
+  'серый синий': '#6A7B8C',
+  'серый сиреневый': '#9890A0',
+  'синий голубой': '#4088C0',
+  'терракот': '#CC6644',
+  'серый': '#808080',
+  'черный': '#000000',
+
+  // ── English equivalents for SS26 ──
+  'lavender': '#B57EDC',
+  'lavanda': '#B57EDC',
+  'peach': '#FFCBA4',
+  'terracot': '#CC6644',
+  'light green': '#7CFC00',
+  'grey-blue': '#8CA8C0',
+  'grey-green': '#7A8B6A',
+
+  // ── SS26 English Collection (from line sheet) ──
+  'hercules': '#8B7355',
+  'athena': '#C8B8A0',
+  'marine octopus': '#6890A0',
+  'venus': '#F2C8D0',
+  'borotalco': '#F0E6D8',
+  'borotalco / dattero': '#E8D8C0',
+  'pink antique': '#D4A0A8',
+  'pink antique / borotalco': '#D8B0B8',
+  'blue antique': '#4070A0',
+  'blue antique / seside': '#3878A0',
+  'blue antique /  seside': '#3878A0',
+  'seside': '#60B0C8',
+  'pantheon': '#A0988A',
+  'pantheon / seside': '#4898B0',
+  'olymp': '#90A8B0',
+  'olymp / ibrido': '#90A8B0',
+  'ibrido': '#A0B8C0',
+  'ibrido / lavanda': '#B8A0C8',
+  'blue agean waves': '#5AAFC8',
+  'blue agean waves / ocean blue': '#4DA0B8',
+  'ocean blue': '#4DA0B8',
+  'white halkidiki': '#F0F0F0',
+  'white halkidiki / violet': '#C8A0D0',
+  'violet': '#800080',
+  'octopus': '#6890A0',
+  'sculpture': '#D8D0C8',
+  'blue hercules': '#3A8090',
+  'sky trident': '#4098D0',
+  'pink trident': '#E08890',
+  'sky blue': '#60B8E0',
+  'dattero': '#D4A850',
+
+  // ── SS26 Новая коллекция (принты и узоры) ──
+  'афина': '#C8B8A0',
+  'бороталько   золотой финик': '#E8D8C0',
+  'бороталько': '#F0E6D8',
+  'венера': '#F2C8D0',
+  'волны эгейского рассвета': '#5AAFC8',
+  'волны эгейского рассвета   ибридо': '#4DA0B8',
+  'геракл': '#8B7355',
+  'геракл в морской стихии': '#3A8090',
+  'геракл на закате   кофе-крем': '#C09870',
+  'древняя греция': '#D4C8A8',
+  'жемчуг эгеи   бороталько': '#E8E0D0',
+  'жемчуг эгеи   фиалковая дымка': '#C8B0D0',
+  'золотой финик': '#D4A850',
+  'ибридо   лавандовая вуаль': '#B8A0C8',
+  'ибридо   лазурные волны эгеи': '#50A0C0',
+  'ибридо': '#A0B8C0',
+  'карамельный вихрь   ибридо': '#C8A070',
+  'лавандовая вуаль': '#B8A0D8',
+  'лавровый венок   бороталько': '#7A9A60',
+  'лавровый венок   золотой финик': '#8AAA50',
+  'лазурные волны эгеи   небесная лазурь': '#48B0D8',
+  'лазурные волны эгеи': '#48B0D8',
+  'лазурный вихрь   бороталько': '#40C0E0',
+  'лазурный вихрь': '#40C0E0',
+  'морские искры   ибридо': '#3090B0',
+  'морские искры': '#3090B0',
+  'мрамор эллады': '#D8D0C8',
+  'мятный олимп': '#70D8B0',
+  'небесная лазурь': '#60B8E0',
+  'небесный трезубец': '#4098D0',
+  'небо санторини   бороталько': '#5AC0E8',
+  'небо санторини': '#5AC0E8',
+  'олимп   ибридо': '#90A8B0',
+  'олимп': '#90A8B0',
+  'пантеон   дыхание моря': '#4898B0',
+  'пантеон': '#A0988A',
+  'дыхание моря': '#60B0C8',
+  'персиковый шёлк': '#F8C8A8',
+  'розовый антик': '#D4A0A8',
+  'розовый антик   бороталько': '#D8B0B8',
+  'розовый бархат': '#C0688A',
+  'синий антик   дыхание моря': '#3878A0',
+  'синий антик': '#4070A0',
+  'синий бархат': '#283878',
+  'трезубец заката': '#E08850',
+  'ультрамарин   морские искры': '#2050A0',
+  'ультрамарин': '#2050A0',
+  'фиалковая дымка': '#C098D0',
+  'эгейский осьминог': '#6890A0',
+};
+
+export function getColorHex(colorName: string): string {
+  const lowerColorName = colorName.toLowerCase().trim();
+
+  // Exact match
+  if (COLOR_MAP[lowerColorName]) {
+    return COLOR_MAP[lowerColorName];
+  }
+
+  // Normalize multiple spaces to single space and try again
+  const normalized = lowerColorName.replace(/\s+/g, ' ');
+  if (COLOR_MAP[normalized]) {
+    return COLOR_MAP[normalized];
+  }
+
+  // Partial match (check if any key is contained in the color name)
+  // Sort keys by length descending so longer (more specific) keys match first
+  const sortedEntries = Object.entries(COLOR_MAP).sort((a, b) => b[0].length - a[0].length);
+  const partialMatch = sortedEntries.find(([key]) =>
+    normalized.includes(key)
+  );
+  if (partialMatch) {
+    return partialMatch[1];
+  }
+
+  // Default grey
+  return '#CCCCCC';
+}
+
+const SIZE_ORDER: { [key: string]: number } = {
+  'xxs': 1, 'xs': 2, 'xs-s': 3, 'xs/s': 3, 's': 4, 's-m': 5, 's/m': 5,
+  'm': 6, 'm-l': 7, 'm/l': 7, 'l': 8, 'l-xl': 9, 'l/xl': 9,
+  'xl': 10, 'xxl': 11, 'xxxl': 12, 'one size': 50,
+};
+
+export function sortSizes(sizes: string[]): string[] {
+  return [...sizes].sort((a, b) => {
+    const aLower = a.toLowerCase().trim();
+    const bLower = b.toLowerCase().trim();
+    const aOrder = SIZE_ORDER[aLower] ?? 99;
+    const bOrder = SIZE_ORDER[bLower] ?? 99;
+    if (aOrder !== bOrder) return aOrder - bOrder;
+    return aLower.localeCompare(bLower);
+  });
+}

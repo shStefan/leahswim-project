@@ -7,22 +7,30 @@ import { useTranslation } from '../context/TranslationContext';
 // Define data for sections to enable mapping
 const sections = [
   {
-    id: 1,
-    title: "Swimwear",
-    backgroundImage: "https://zdqksnii.elementor.cloud/wp-content/uploads/2025/07/3y0L1Yh0.jpeg",
-    path: "/category/%25d0%25ba%25d1%2583%25d0%25bf%25d0%25b0%25d0%25bb%25d1%258c%25d0%25bd%25d0%25b8%25d0%25ba%25d0%25b8-2",
+    id: 7,
+    title: "New Collection\nSpring-Summer 26",
+    backgroundImage: "/homepageimages/newcoll.webp",
+    path: "/category/ss26",
   },
   {
-    id: 2,
-    title: "Clothing",
-    backgroundImage: "https://zdqksnii.elementor.cloud/wp-content/uploads/2025/05/second-scaled.webp",
-    path: "/category/%25d0%25be%25d0%25b4%25d0%25b5%25d0%25b6%25d0%25b4%25d0%25b0-2",
+    id: 0,
+    title: "Cruise Collection",
+    backgroundImage: "/homepageimages/newcruisimg.webp",
+    path: "/category/kupalniki-new",
   },
   {
     id: 3,
     title: "Accessories",
     backgroundImage: "https://zdqksnii.elementor.cloud/wp-content/uploads/2025/05/third-scaled.webp",
     path: "/category/%25d0%25b0%25d0%25ba%25d1%2581%25d0%25b5%25d1%2581%25d1%2581%25d1%2583%25d0%25b0%25d1%2580%25d1%258b",
+  },
+  {
+    id: 6,
+    title: "Basic Collection",
+    backgroundImage: "/homepageimages/basicimg.webp",
+    path: "/category/%25d0%25b1%25d0%25b0%25d0%25b7%25d0%25be%25d0%25b2%25d0%25b0%25d1%258f-%25d0%25ba%25d0%25be%25d0%25bb%25d0%25bb%25d0%25b5%25d0%25ba%25d1%2586%25d0%25b8%25d1%258f",
+    objectPosition: "center 15%",
+    parallaxOffset: 150,
   },
   {
     id: 4,
@@ -36,12 +44,7 @@ const sections = [
     backgroundImage: "https://zdqksnii.elementor.cloud/wp-content/uploads/2025/07/nWHLeQ6Y.jpeg",
     path: "/category/plus-size1",
   },
-  {
-    id: 6,
-    title: "Kids",
-    backgroundImage: "https://zdqksnii.elementor.cloud/wp-content/uploads/2025/05/Kids.webp",
-    path: "/category/%25d0%25b4%25d0%25b5%25d1%2582%25d1%2581%25d0%25ba%25d0%25b0%25d1%258f-%25d0%25be%25d0%25b4%25d0%25b5%25d0%25b6%25d0%25b4%25d0%25b0",
-  },
+
 ];
 
 const DESKTOP_PARALLAX_FACTOR = 0.15;
@@ -69,7 +72,8 @@ export const HomePage = (): JSX.Element => {
             const sectionData = sections[index];
             const elementHeight = ref.offsetHeight;
             const rect = ref.getBoundingClientRect();
-            const initialCenteringOffset = -elementHeight * (IMAGE_SCALE_FACTOR - 1) / 2;
+            const sectionOffset = sectionData.parallaxOffset || 0;
+            const initialCenteringOffset = -elementHeight * (IMAGE_SCALE_FACTOR - 1) / 2 + sectionOffset;
 
             let targetTranslateY = initialCenteringOffset;
 
@@ -149,7 +153,7 @@ export const HomePage = (): JSX.Element => {
                 src={section.backgroundImage} 
                 alt={section.title} 
                 className="absolute top-0 left-0 w-full object-cover will-change-[transform]"
-                style={currentStyle} 
+                style={{...currentStyle, objectPosition: section.objectPosition || 'center'}} 
               />
               {/* Gradient Overlay */}
               <div className="absolute inset-0 bg-gradient-to-t from-black/20 to-transparent"></div>
@@ -159,7 +163,7 @@ export const HomePage = (): JSX.Element => {
                 <DynamicText 
                   text={section.title}
                   tag="h2"
-                  className="font-sans font-normal text-white text-2xl text-center tracking-[0] leading-[31.2px] whitespace-nowrap mb-[15px]"
+                  className="font-sans font-normal text-white text-2xl text-center tracking-[0] leading-[31.2px] whitespace-pre-line mb-[15px]"
                 />
                 <Link to={`${language === 'en' ? '/en' : ''}${section.path}`}> {/* Added Link wrapper */}
                   <Button
