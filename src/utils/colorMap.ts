@@ -545,6 +545,68 @@ export function getColorHex(colorName: string): string {
   return '#CCCCCC';
 }
 
+/**
+ * Transliterate Cyrillic characters to Latin equivalents and produce a URL-friendly slug.
+ * For English names: "Marine Octopus" → "marine-octopus"
+ * For Russian names that leak through: "Геракл" → "gerakl"
+ */
+const CYRILLIC_TO_LATIN: { [key: string]: string } = {
+  'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo',
+  'ж': 'zh', 'з': 'z', 'и': 'i', 'й': 'y', 'к': 'k', 'л': 'l', 'м': 'm',
+  'н': 'n', 'о': 'o', 'п': 'p', 'р': 'r', 'с': 's', 'т': 't', 'у': 'u',
+  'ф': 'f', 'х': 'kh', 'ц': 'ts', 'ч': 'ch', 'ш': 'sh', 'щ': 'shch',
+  'ъ': '', 'ы': 'y', 'ь': '', 'э': 'e', 'ю': 'yu', 'я': 'ya',
+};
+
+export function slugifyColor(colorName: string): string {
+  if (!colorName) return '';
+
+  const lower = colorName.toLowerCase().trim();
+
+  // Transliterate each character
+  let result = '';
+  for (const char of lower) {
+    if (CYRILLIC_TO_LATIN[char] !== undefined) {
+      result += CYRILLIC_TO_LATIN[char];
+    } else if (/[a-z0-9]/.test(char)) {
+      result += char;
+    } else if (/[\s\-–—,\/]/.test(char)) {
+      result += '-';
+    }
+    // Skip any other characters (punctuation, etc.)
+  }
+
+  // Collapse multiple dashes and trim
+  return result.replace(/-+/g, '-').replace(/^-|-$/g, '');
+}
+
+/**
+ * Resolve a URL slug back to the original color name from a list of available colors.
+ * Compares slugified versions of each available color against the provided slug.
+ * Also supports legacy URL-encoded names for backward compatibility.
+ */
+export function resolveColorFromSlug(slug: string | null, availableColors: string[]): string | null {
+  if (!slug || availableColors.length === 0) return null;
+
+  // First, check if the slug is actually an exact match (legacy URL-encoded value was decoded)
+  const exactMatch = availableColors.find(c => c === slug);
+  if (exactMatch) return exactMatch;
+
+  // Case-insensitive exact match (legacy)
+  const caseInsensitiveMatch = availableColors.find(c => c.toLowerCase() === slug.toLowerCase());
+  if (caseInsensitiveMatch) return caseInsensitiveMatch;
+
+  // Slugified comparison
+  const normalizedSlug = slug.toLowerCase().replace(/-+/g, '-').replace(/^-|-$/g, '');
+  for (const color of availableColors) {
+    if (slugifyColor(color) === normalizedSlug) {
+      return color;
+    }
+  }
+
+  return null;
+}
+
 const SIZE_ORDER: { [key: string]: number } = {
   'xxs': 1, 'xs': 2, 'xs-s': 3, 'xs/s': 3, 's': 4, 's-m': 5, 's/m': 5,
   'm': 6, 'm-l': 7, 'm/l': 7, 'l': 8, 'l-xl': 9, 'l/xl': 9,

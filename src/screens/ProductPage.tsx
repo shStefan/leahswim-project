@@ -13,7 +13,7 @@ import { convertAndFormatPrice } from '../utils/priceUtils';
 import { LoadingWrapper } from '../components/LoadingWrapper';
 import { TranslatedHTML } from '../components/TranslatedHTML';
 import { apiEndpoints } from '../utils/apiConfig';
-import { getColorHex } from '../utils/colorMap';
+import { getColorHex, slugifyColor, resolveColorFromSlug } from '../utils/colorMap';
 
 interface MediaItem {
   type: 'image' | 'video';
@@ -48,6 +48,7 @@ interface ProductVariation {
   image?: { id: number; src: string; name: string; alt: string }; // Image is optional
   price?: string;
   description?: string; // Added optional description field
+  stock_status?: string; // 'instock', 'outofstock', 'onbackorder'
   variation_gallery?: { // Added for variation-specific galleries
     ids: number[];
     urls: string[];
@@ -190,10 +191,13 @@ export const ProductPage = (): JSX.Element => {
   // Effect to update URL search parameter 'print' when selectedColor changes
   useEffect(() => {
     const currentPrintParam = searchParams.get('print');
-    if (selectedColor && selectedColor !== currentPrintParam) {
-      const newSearchParams = new URLSearchParams(searchParams);
-      newSearchParams.set('print', selectedColor);
-      setSearchParams(newSearchParams, { replace: true });
+    if (selectedColor) {
+      const slugged = slugifyColor(selectedColor);
+      if (slugged !== currentPrintParam) {
+        const newSearchParams = new URLSearchParams(searchParams);
+        newSearchParams.set('print', slugged);
+        setSearchParams(newSearchParams, { replace: true });
+      }
     } else if (!selectedColor && currentPrintParam) {
       // If selectedColor is cleared, remove 'print' from URL
       const newSearchParams = new URLSearchParams(searchParams);
@@ -223,7 +227,7 @@ export const ProductPage = (): JSX.Element => {
         const { url: productUrl, options: productOptions } = apiEndpoints.products(`include=${currentProductId}&_fields=${productFields}`);
         const productPromise = fetch(productUrl, productOptions);
 
-        const { url: variationsUrl, options: variationsOptions } = apiEndpoints.variations(currentProductId, 'per_page=100&_fields=id,price,regular_price,sale_price,attributes,image,status,description,variation_gallery');
+        const { url: variationsUrl, options: variationsOptions } = apiEndpoints.variations(currentProductId, 'per_page=100&_fields=id,price,regular_price,sale_price,attributes,image,status,stock_status,description,variation_gallery');
         const variationsPromise = fetch(variationsUrl, variationsOptions);
 
         // Await both promises in parallel
@@ -266,9 +270,20 @@ export const ProductPage = (): JSX.Element => {
         // Set initial selected color and size (or confirm existing from link state/URL)
         // The selectedColor state is already initialized from linkState or URL param.
         // Here, we just ensure it's valid if it came from URL, or set default if nothing was provided.
-        if (initialSelectedColorFromStateOrUrl && colors.includes(initialSelectedColorFromStateOrUrl)) {
-          if (selectedColor !== initialSelectedColorFromStateOrUrl) { // Sync if different
-             setSelectedColor(initialSelectedColorFromStateOrUrl);
+        if (initialSelectedColorFromStateOrUrl) {
+          // If it came from link state, it's an exact color name
+          if (colors.includes(initialSelectedColorFromStateOrUrl)) {
+            if (selectedColor !== initialSelectedColorFromStateOrUrl) {
+              setSelectedColor(initialSelectedColorFromStateOrUrl);
+            }
+          } else {
+            // It may be a slugified URL value — resolve it
+            const resolved = resolveColorFromSlug(initialSelectedColorFromStateOrUrl, colors);
+            if (resolved && selectedColor !== resolved) {
+              setSelectedColor(resolved);
+            } else if (!resolved && colors.length > 0 && !selectedColor) {
+              setSelectedColor(colors[0]);
+            }
           }
         } else if (colors.length > 0 && !selectedColor) { // Only set default if no color is selected yet
           setSelectedColor(colors[0]);
@@ -510,6 +525,44 @@ export const ProductPage = (): JSX.Element => {
 
   // Color mapping function - using shared utility
 
+  // Compute size stock status for the currently selected color
+  // Must be before early returns to satisfy Rules of Hooks
+  const sizeStockStatus = useMemo(() => {
+    const statusMap: { [size: string]: boolean } = {};
+    if (!productVariations || productVariations.length === 0) return statusMap;
+
+    productVariations.forEach(variation => {
+      if (!variation || !Array.isArray(variation.attributes)) return;
+
+      // If product has colors, only consider variations matching selected color
+      if (allColors && allColors.length > 0) {
+        const colorMatch = variation.attributes.some(attr =>
+          attr &&
+          (attr.slug === 'pa_print' ||
+            (attr.name && attr.name.toLowerCase() === 'принт') ||
+            (attr.name && attr.name.toLowerCase() === 'color')) &&
+          attr.option === selectedColor
+        );
+        if (!colorMatch) return;
+      }
+
+      const sizeAttr = variation.attributes.find(attr =>
+        attr &&
+        (attr.slug === 'pa_size' ||
+          (attr.name && attr.name.toLowerCase() === 'размер') ||
+          (attr.name && attr.name.toLowerCase() === 'size'))
+      );
+      if (sizeAttr?.option) {
+        if (variation.stock_status === 'instock') {
+          statusMap[sizeAttr.option] = true;
+        } else if (statusMap[sizeAttr.option] === undefined) {
+          statusMap[sizeAttr.option] = false;
+        }
+      }
+    });
+    return statusMap;
+  }, [productVariations, selectedColor, allColors]);
+
   if (loading) {
     return (
       <LoadingWrapper isContentLoading={true} showSkeleton={true}>
@@ -544,6 +597,7 @@ export const ProductPage = (): JSX.Element => {
     attr.name.toLowerCase() === 'size' ||
     attr.slug === 'pa_size'
   )?.options || [];
+
 
   return (
     <LoadingWrapper isContentLoading={false} showSkeleton={false}>
@@ -700,19 +754,24 @@ export const ProductPage = (): JSX.Element => {
           <div className="mt-8">
                             <p className="font-sans mb-2">{t('common.selectSize')}</p>
             <div className="flex flex-wrap gap-2">
-              {allSizes.map((size: string) => (
-                <button
-                  key={size}
-                  className={`px-4 py-2 border rounded-full text-sm font-medium transition-colors duration-150 ease-in-out focus:outline-none focus:ring-2 focus:ring-offset-1 focus:ring-black ${
-                    selectedSize === size
-                      ? 'bg-black text-white border-black'
-                      : 'bg-white text-gray-700 border-gray-300 hover:border-black hover:text-black'
-                  }`}
-                  onClick={() => setSelectedSize(size)}
-                >
-                  {size}
-                </button>
-              ))}
+              {allSizes.map((size: string) => {
+                const isInStock = sizeStockStatus[size] !== false;
+                return (
+                  <button
+                    key={size}
+                    className={`px-4 py-2 border rounded-full text-sm font-medium transition-colors duration-150 ease-in-out focus:outline-none ${isInStock ? (
+                      selectedSize === size
+                        ? 'bg-black text-white border-black'
+                        : 'bg-white text-gray-700 border-gray-300 hover:border-black hover:text-black focus:ring-2 focus:ring-offset-1 focus:ring-black'
+                    ) : 'bg-white text-gray-300 border-gray-200 line-through cursor-not-allowed'}`}
+                    onClick={() => isInStock && setSelectedSize(size)}
+                    disabled={!isInStock}
+                    title={isInStock ? size : `${size} — out of stock`}
+                  >
+                    {size}
+                  </button>
+                );
+              })}
             </div>
             {selectedSize && (
                               <div className="mt-2 text-sm text-gray-600">{t('common.selectedSize')}: <span className="font-semibold">{selectedSize}</span></div>

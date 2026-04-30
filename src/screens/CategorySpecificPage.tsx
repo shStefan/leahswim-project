@@ -10,7 +10,7 @@ import { DiscountPrice } from '../components/DiscountPrice';
 import { DynamicText } from '../components/DynamicText';
 import { useTranslation } from '../context/TranslationContext';
 import { apiEndpoints } from '../utils/apiConfig';
-import { getColorHex, sortSizes } from '../utils/colorMap';
+import { getColorHex, sortSizes, slugifyColor } from '../utils/colorMap';
 import { getActualPrice } from '../utils/priceHelpers';
 import { savePageNumber, getPageNumber, clearPageNumber } from '../components/ScrollToTop';
 import ProductImageCarousel from '../components/ProductImageCarousel';
@@ -94,7 +94,8 @@ interface DisplayableProduct {
   slug?: string;
   allColorOptions: string[];
   selectedColorOption: string;
-  availableSizesForThisColor?: string[]; // Sizes actually available for this specific color
+  availableSizesForThisColor?: string[]; // ALL sizes for this color (in-stock + OOS)
+  sizeStockStatus?: { [size: string]: boolean }; // Track which sizes are in stock for this color
   colorStockStatus?: { [color: string]: boolean }; // Track which colors have stock
   status: string;
   categories?: Array<{ id: number; name: string }>;
@@ -407,10 +408,10 @@ export const CategorySpecificPage = (): JSX.Element => {
                       .map(([color, colorVariations]) => {
                         const bestVariation = colorVariations.find(v => v.stock_status === 'instock') || colorVariations[0];
 
-                        // Extract only IN-STOCK sizes for this color
+                        // Extract ALL sizes for this color and track stock status
                         const sizesForThisColor = new Set<string>();
+                        const sizeStockMap: { [size: string]: boolean } = {};
                         colorVariations.forEach(variation => {
-                          if (variation.stock_status !== 'instock') return; // Skip OOS variations
                           const sizeAttr = variation.attributes.find(attr =>
                             attr.slug?.startsWith('pa_razmer') ||
                             attr.slug?.startsWith('pa_size') ||
@@ -419,6 +420,11 @@ export const CategorySpecificPage = (): JSX.Element => {
                           );
                           if (sizeAttr?.option) {
                             sizesForThisColor.add(sizeAttr.option);
+                            if (variation.stock_status === 'instock') {
+                              sizeStockMap[sizeAttr.option] = true;
+                            } else if (sizeStockMap[sizeAttr.option] === undefined) {
+                              sizeStockMap[sizeAttr.option] = false;
+                            }
                           }
                         });
 
@@ -458,6 +464,7 @@ export const CategorySpecificPage = (): JSX.Element => {
                           allColorOptions: Object.keys(variationsByColor).filter(c => colorStockMap[c]),
                           selectedColorOption: color,
                           availableSizesForThisColor: Array.from(sizesForThisColor),
+                          sizeStockStatus: sizeStockMap,
                           colorStockStatus: colorStockMap,
                           status: product.status,
                           categories: product.categories,
@@ -1567,7 +1574,7 @@ export const CategorySpecificPage = (): JSX.Element => {
                 {displayableProducts.map((product, idx) => {
                   const isLastCol = ((idx + 1) % 3 === 0);
                   const isLastRow = idx >= displayableProducts.length - (displayableProducts.length % 3 || 3);
-                  const productLink = `/product/${product.parentId}?print=${encodeURIComponent(product.selectedColorOption)}`;
+                  const productLink = `/product/${product.parentId}?print=${slugifyColor(product.selectedColorOption)}`;
 
                   // DEBUG: Log what imageSrc we have at render time
                   if (product.imageSrc && !product.imageSrc.startsWith('https://leahcation.ru/wp/') && product.imageSrc !== '/placeholder.png') {
@@ -1602,7 +1609,7 @@ export const CategorySpecificPage = (): JSX.Element => {
                           </Link>
                           <div className="mt-2 flex items-center space-x-1">
                             {(product.allColorOptions || []).map(color => (
-                              <Link key={color} to={`/product/${product.parentId}?print=${encodeURIComponent(String(color))}`} title={String(color)}>
+                              <Link key={color} to={`/product/${product.parentId}?print=${slugifyColor(String(color))}`} title={String(color)}>
                                 <span className={`block w-4 h-4 rounded-full border hover:border-black ${product.selectedColorOption === color ? 'ring-1 ring-offset-1 ring-black' : 'border-gray-300'}`} style={{ backgroundColor: getColorHex(String(color)) }}></span>
                               </Link>
                             ))}
@@ -1611,16 +1618,27 @@ export const CategorySpecificPage = (): JSX.Element => {
                           {/* Size swatches */}
                           {product.availableSizesForThisColor && product.availableSizesForThisColor.length > 0 && (
                             <div className="mt-2 flex flex-wrap gap-1">
-                              {sortSizes(product.availableSizesForThisColor).map((size: string) => (
-                                <Link
-                                  key={size}
-                                  to={`/product/${product.parentId}?print=${encodeURIComponent(product.selectedColorOption)}&size=${encodeURIComponent(size)}`}
-                                  className="px-2 py-0.5 text-[10px] border rounded-full border-gray-300 bg-white text-gray-700 hover:border-black transition-colors"
-                                  title={size}
-                                >
-                                  {size}
-                                </Link>
-                              ))}
+                              {sortSizes(product.availableSizesForThisColor).map((size: string) => {
+                                const isInStock = product.sizeStockStatus?.[size] !== false;
+                                return isInStock ? (
+                                  <Link
+                                    key={size}
+                                    to={`/product/${product.parentId}?print=${slugifyColor(product.selectedColorOption)}&size=${encodeURIComponent(size)}`}
+                                    className="px-2 py-0.5 text-[10px] border rounded-full border-gray-300 bg-white text-gray-700 hover:border-black transition-colors"
+                                    title={size}
+                                  >
+                                    {size}
+                                  </Link>
+                                ) : (
+                                  <span
+                                    key={size}
+                                    className="px-2 py-0.5 text-[10px] border rounded-full border-gray-200 bg-white text-gray-300 line-through cursor-not-allowed"
+                                    title={`${size} — out of stock`}
+                                  >
+                                    {size}
+                                  </span>
+                                );
+                              })}
                             </div>
                           )}
                         </div>

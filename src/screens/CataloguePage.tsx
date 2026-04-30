@@ -10,7 +10,7 @@ import { DiscountPrice } from '../components/DiscountPrice';
 import { DynamicText } from '../components/DynamicText';
 import { useTranslation } from '../context/TranslationContext';
 import { apiEndpoints } from '../utils/apiConfig';
-import { getColorHex, sortSizes } from '../utils/colorMap';
+import { getColorHex, sortSizes, slugifyColor } from '../utils/colorMap';
 import { getActualPrice } from '../utils/priceHelpers';
 import { convertAndFormatPrice } from '../utils/priceUtils';
 import { savePageNumber, getPageNumber, clearPageNumber } from '../components/ScrollToTop';
@@ -1281,7 +1281,7 @@ export const CataloguePage = (): JSX.Element => {
                     const isLastRow = idx >= sortedAndFilteredProducts.length - (sortedAndFilteredProducts.length % 3 || 3);
                     const uniqueKey = product.variationId ? `var-${product.variationId}` : `prod-${product.parentId}`;
                     // Construct the link to the product page, ensuring the selected color of this card is passed as a query param
-                    const productLink = `/product/${product.parentId}?print=${encodeURIComponent(product.selectedColorOption)}`;
+                    const productLink = `/product/${product.parentId}?print=${slugifyColor(product.selectedColorOption)}`;
 
                     return (
                       <div
@@ -1355,7 +1355,7 @@ export const CataloguePage = (): JSX.Element => {
                                 return (
                                   <Link
                                     key={idx}
-                                    to={`/product/${product.parentId}?print=${encodeURIComponent(String(color))}`}
+                                    to={`/product/${product.parentId}?print=${slugifyColor(String(color))}`}
                                     className="inline-block"
                                     title={String(color)}
                                   >
@@ -1378,17 +1378,24 @@ export const CataloguePage = (): JSX.Element => {
                               <div className="flex flex-wrap gap-1">
                                 {sortSizes(product.allSizeOptions).map((size: string, idx: number) => {
                                   const isSizeInStock = product.sizeStockStatus?.[size] === true;
-                                  if (!isSizeInStock) return null; // Hide out-of-stock sizes entirely
 
-                                  return (
+                                  return isSizeInStock ? (
                                     <Link
                                       key={idx}
-                                      to={`/product/${product.parentId}?print=${encodeURIComponent(product.selectedColorOption)}&size=${encodeURIComponent(size)}`}
+                                      to={`/product/${product.parentId}?print=${slugifyColor(product.selectedColorOption)}&size=${encodeURIComponent(size)}`}
                                       className="px-1.5 py-0.5 text-[10px] border rounded border-gray-300 bg-white text-gray-700 hover:border-black transition-colors"
                                       title={size}
                                     >
                                       {size}
                                     </Link>
+                                  ) : (
+                                    <span
+                                      key={idx}
+                                      className="px-1.5 py-0.5 text-[10px] border rounded border-gray-200 bg-white text-gray-300 line-through cursor-not-allowed"
+                                      title={`${size} \u2014 out of stock`}
+                                    >
+                                      {size}
+                                    </span>
                                   );
                                 })}
                               </div>
