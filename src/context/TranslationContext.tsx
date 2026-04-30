@@ -394,6 +394,8 @@ class TranslationService {
     'Рюкзак': 'Backpack',
     'Корзина из ротанга': 'Rattan basket bag',
     'Сумка-мешок': 'Bucket bag',
+    'Сумка-тоут': 'Tote bag',
+    'Сумка тоут': 'Tote bag',
 
     // ──────────────────────────────────────────────
     // ACCESSORIES — HATS

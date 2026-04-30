@@ -11,6 +11,7 @@ import { DynamicText } from '../components/DynamicText';
 import { useTranslation } from '../context/TranslationContext';
 import { apiEndpoints } from '../utils/apiConfig';
 import { getColorHex, sortSizes, slugifyColor } from '../utils/colorMap';
+import { isProductHidden } from '../utils/hiddenProducts';
 import { getActualPrice } from '../utils/priceHelpers';
 import { convertAndFormatPrice } from '../utils/priceUtils';
 import { savePageNumber, getPageNumber, clearPageNumber } from '../components/ScrollToTop';
@@ -524,6 +525,9 @@ export const CataloguePage = (): JSX.Element => {
 
         // 2. Identify variable products and fetch their detailed variations
         const variationPromises = baseProducts.map(async (product) => {
+          // Skip hidden products
+          if (isProductHidden(product.id)) return;
+
           // Ensure product.images is an array, default to empty if not
           const productImages = Array.isArray(product.images) ? product.images : [];
 

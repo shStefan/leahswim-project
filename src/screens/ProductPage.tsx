@@ -14,6 +14,7 @@ import { LoadingWrapper } from '../components/LoadingWrapper';
 import { TranslatedHTML } from '../components/TranslatedHTML';
 import { apiEndpoints } from '../utils/apiConfig';
 import { getColorHex, slugifyColor, resolveColorFromSlug } from '../utils/colorMap';
+import { isProductHidden } from '../utils/hiddenProducts';
 
 interface MediaItem {
   type: 'image' | 'video';
@@ -328,7 +329,7 @@ export const ProductPage = (): JSX.Element => {
         .then(res => res.json())
         .then((data: Product[]) => { // Ensure type is Product[]
           console.log('[ProductPage] Fetched related products raw data:', data);
-          const filteredRelatedProducts = data.filter(p => p.id !== product.id);
+          const filteredRelatedProducts = data.filter(p => p.id !== product.id && !isProductHidden(p.id));
           console.log('[ProductPage] Filtered related products (to be set in state):', filteredRelatedProducts);
           setRelatedProducts(filteredRelatedProducts); // Double check exclusion
           setLoadingRelated(false);

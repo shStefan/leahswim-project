@@ -11,6 +11,7 @@ import { DynamicText } from '../components/DynamicText';
 import { useTranslation } from '../context/TranslationContext';
 import { apiEndpoints } from '../utils/apiConfig';
 import { getColorHex, sortSizes, slugifyColor } from '../utils/colorMap';
+import { isProductHidden } from '../utils/hiddenProducts';
 import { getActualPrice } from '../utils/priceHelpers';
 import { savePageNumber, getPageNumber, clearPageNumber } from '../components/ScrollToTop';
 import ProductImageCarousel from '../components/ProductImageCarousel';
@@ -352,6 +353,9 @@ export const CategorySpecificPage = (): JSX.Element => {
       // Process products with variations efficiently
       const processedProducts = await Promise.all(
         baseProducts.map(async (product) => {
+          // Skip hidden products
+          if (isProductHidden(product.id)) return null;
+
           const productImages = Array.isArray(product.images) ? product.images : [];
 
           // DEBUG: Log raw product data from API
