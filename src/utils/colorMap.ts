@@ -1,6 +1,6 @@
 /**
  * Comprehensive color hex map for all pa_print attribute terms + product-level color options.
- * Used by ProductPage, CategorySpecificPage, CataloguePage, and SelectedFiltersDisplay for swatch rendering.
+ * Used by ProductPage, CategorySpecificPage, CataloguePage, Header, and SelectedFiltersDisplay for swatch rendering.
  */
 const COLOR_MAP: { [key: string]: string } = {
   // ══════════════════════════════════════════════
@@ -352,6 +352,8 @@ const COLOR_MAP: { [key: string]: string } = {
   'сицилия': '#E3DA73',
   'сицилия   джокер': '#D4C060',
   'слоновая кость   мокачино': '#FFFFF0',
+  'серый': '#808080',
+  'черный': '#000000',
 
   // ── Т ──
   'тай-дай лайм': '#C5E17A',
@@ -420,50 +422,6 @@ const COLOR_MAP: { [key: string]: string } = {
   'серый сиреневый': '#9890A0',
   'синий голубой': '#4088C0',
   'терракот': '#CC6644',
-  'серый': '#808080',
-  'черный': '#000000',
-
-  // ── English equivalents for SS26 ──
-  'lavender': '#B57EDC',
-  'lavanda': '#B57EDC',
-  'peach': '#FFCBA4',
-  'terracot': '#CC6644',
-  'light green': '#7CFC00',
-  'grey-blue': '#8CA8C0',
-  'grey-green': '#7A8B6A',
-
-  // ── SS26 English Collection (from line sheet) ──
-  'hercules': '#8ED9CE',
-  'athena': '#FFADD4',
-  'marine octopus': '#6890A0',
-  'venus': '#E07666',
-  'borotalco': '#F0E6D8',
-  'borotalco / dattero': '#E8D8C0',
-  'pink antique': '#D4A0A8',
-  'pink antique / borotalco': '#D8B0B8',
-  'blue antique': '#4070A0',
-  'blue antique / seside': '#3878A0',
-  'blue antique /  seside': '#3878A0',
-  'seside': '#60B0C8',
-  'pantheon': '#A0988A',
-  'pantheon / seside': '#4898B0',
-  'olymp': '#FF9CD1',
-  'olymp / ibrido': '#FF9CD1',
-  'ibrido': '#A0B8C0',
-  'ibrido / lavanda': '#B8A0C8',
-  'blue agean waves': '#FFB8DF',
-  'blue agean waves / ocean blue': '#FFACDE',
-  'ocean blue': '#4DA0B8',
-  'white halkidiki': '#F0F0F0',
-  'white halkidiki / violet': '#C8A0D0',
-  'violet': '#800080',
-  'octopus': '#6890A0',
-  'sculpture': '#DF604D',
-  'blue hercules': '#78ABF2',
-  'sky trident': '#95CFCA',
-  'pink trident': '#E08890',
-  'sky blue': '#60B8E0',
-  'dattero': '#D4A850',
 
   // ── SS26 Новая коллекция (принты и узоры) ──
   'афина': '#FFADD4',
@@ -480,11 +438,11 @@ const COLOR_MAP: { [key: string]: string } = {
   'жемчуг эгеи   фиалковая дымка': '#C8B0D0',
   'золотой финик': '#D4A850',
   'ибридо   лавандовая вуаль': '#B8A0C8',
-  'ибридо   лазурные волны эгеи': '#50A0C0',
+  'ибридо   лазурные волны эгеи': '#FFB0C8',
   'ибридо': '#A0B8C0',
-  'карамельный вихрь   ибридо': '#C8A070',
+  'карамельный вихрь   ибридо': '#FFB0C8',
   'лавандовая вуаль': '#B8A0D8',
-  'лавровый венок   бороталько': '#7A9A60',
+  'лавровый венок   бороталько': '#C4A882',
   'лавровый венок   золотой финик': '#E6B2A6',
   'лазурные волны эгеи   небесная лазурь': '#48B0D8',
   'лазурные волны эгеи': '#48B0D8',
@@ -496,7 +454,7 @@ const COLOR_MAP: { [key: string]: string } = {
   'мятный олимп': '#70D8B0',
   'небесная лазурь': '#60B8E0',
   'небесный трезубец': '#95CFCA',
-  'небо санторини   бороталько': '#5AC0E8',
+  'небо санторини   бороталько': '#D7C7BB',
   'небо санторини': '#5AC0E8',
   'олимп   ибридо': '#FF9CD1',
   'олимп': '#FF9CD1',
@@ -546,9 +504,8 @@ export function getColorHex(colorName: string): string {
 }
 
 /**
- * Transliterate Cyrillic characters to Latin equivalents and produce a URL-friendly slug.
- * For English names: "Marine Octopus" → "marine-octopus"
- * For Russian names that leak through: "Геракл" → "gerakl"
+ * Transliterate Russian characters to Latin equivalents and produce a URL-friendly slug.
+ * Converts "Жемчуг Эгеи   Боротальк" → "zhemchug-egei-borotalko"
  */
 const CYRILLIC_TO_LATIN: { [key: string]: string } = {
   'а': 'a', 'б': 'b', 'в': 'v', 'г': 'g', 'д': 'd', 'е': 'e', 'ё': 'yo',
@@ -583,7 +540,7 @@ export function slugifyColor(colorName: string): string {
 /**
  * Resolve a URL slug back to the original color name from a list of available colors.
  * Compares slugified versions of each available color against the provided slug.
- * Also supports legacy URL-encoded names for backward compatibility.
+ * Also supports legacy URL-encoded Russian names for backward compatibility.
  */
 export function resolveColorFromSlug(slug: string | null, availableColors: string[]): string | null {
   if (!slug || availableColors.length === 0) return null;
@@ -607,10 +564,28 @@ export function resolveColorFromSlug(slug: string | null, availableColors: strin
   return null;
 }
 
+/**
+ * Sort sizes from small to large.
+ * Handles standard sizes (XS, S, M, L, XL) and compound sizes (XS-S, M-L, etc.)
+ */
 const SIZE_ORDER: { [key: string]: number } = {
-  'xxs': 1, 'xs': 2, 'xs-s': 3, 'xs/s': 3, 's': 4, 's-m': 5, 's/m': 5,
-  'm': 6, 'm-l': 7, 'm/l': 7, 'l': 8, 'l-xl': 9, 'l/xl': 9,
-  'xl': 10, 'xxl': 11, 'xxxl': 12, 'one size': 50,
+  'xxs': 1,
+  'xs': 2,
+  'xs-s': 3,
+  'xs/s': 3,
+  's': 4,
+  's-m': 5,
+  's/m': 5,
+  'm': 6,
+  'm-l': 7,
+  'm/l': 7,
+  'l': 8,
+  'l-xl': 9,
+  'l/xl': 9,
+  'xl': 10,
+  'xxl': 11,
+  'xxxl': 12,
+  'one size': 50,
 };
 
 export function sortSizes(sizes: string[]): string[] {
