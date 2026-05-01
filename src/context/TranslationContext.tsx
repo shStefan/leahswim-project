@@ -396,6 +396,8 @@ class TranslationService {
     'Сумка-мешок': 'Bucket bag',
     'Сумка-тоут': 'Tote bag',
     'Сумка тоут': 'Tote bag',
+    'Тоут': 'Tote bag',
+    'тоут': 'Tote bag',
 
     // ──────────────────────────────────────────────
     // ACCESSORIES — HATS
