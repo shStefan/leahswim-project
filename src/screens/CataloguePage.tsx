@@ -652,13 +652,19 @@ export const CataloguePage = (): JSX.Element => {
                         status: product.status,
                         categories: product.categories,
                         originalImages: (() => {
-                          // Build enriched gallery: parent images + variation images (color-specific first, then others)
+                          // Build enriched gallery: variation main image + variation_gallery URLs
                           const gallerySet = new Set<string>();
-                          productImages.forEach(img => { if (img.src) gallerySet.add(img.src); });
-                          variationsInGroup.forEach(v => { if (v.image?.src) gallerySet.add(v.image.src); });
-                          // If still < 3, pull from other variations to fill the carousel
-                          if (gallerySet.size < 3) {
-                            detailedVariations.forEach(v => { if (v.image?.src && gallerySet.size < 3) gallerySet.add(v.image.src); });
+                          // 1. Add representative variation's main image
+                          if (representativeVariation.image?.src) gallerySet.add(representativeVariation.image.src);
+                          // 2. Add variation-specific gallery images (variation_gallery.urls)
+                          const varGallery = (representativeVariation as any).variation_gallery;
+                          if (varGallery && varGallery.urls && varGallery.urls.length > 0) {
+                            varGallery.urls.forEach((url: string) => { if (url) gallerySet.add(url); });
+                          }
+                          // 3. Fallback: parent images + other variation images
+                          if (gallerySet.size < 2) {
+                            productImages.forEach(img => { if (img.src) gallerySet.add(img.src); });
+                            variationsInGroup.forEach(v => { if (v.image?.src) gallerySet.add(v.image.src); });
                           }
                           return Array.from(gallerySet).map(src => ({ src }));
                         })(),
