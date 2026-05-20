@@ -24,17 +24,18 @@ const ProductImageCarousel = ({ product, productLink }: ProductImageCarouselProp
     console.log(`🔵🔵🔵 [CAROUSEL RENDER] Product ${product.parentId} "${product.name}" | imageSrc: ${product.imageSrc?.substring(0, 50)}... | originalImages: ${product.originalImages?.length || 0}`);
 
     // Convert full-size WooCommerce URL to a smaller thumbnail for catalogue cards
-    // e.g., ...hash-scaled.jpg → ...hash-768x768.jpg  or  ...hash.jpg → ...hash-768x768.jpg
+    // Only transforms -scaled images (guaranteed to have square thumbnails)
+    // Non-scaled originals are left as-is since their thumbnail sizes vary
     const toThumbnail = useCallback((src: string, size = '768x768'): string => {
         if (!src || src === '/placeholder.png') return src;
         // Already a thumbnail?
         if (/-\d+x\d+\.(jpg|jpeg|png|webp)$/i.test(src)) return src;
-        // -scaled.jpg → -SIZExSIZE.jpg
+        // Only -scaled.jpg → -SIZExSIZE.jpg (these always have square thumbs)
         if (/-scaled\.(jpg|jpeg|png|webp)$/i.test(src)) {
             return src.replace(/-scaled\./, `-${size}.`);
         }
-        // original.jpg → original-SIZExSIZE.jpg
-        return src.replace(/\.(jpg|jpeg|png|webp)$/i, `-${size}.$1`);
+        // Non-scaled originals: leave as-is (thumbnail sizes unpredictable)
+        return src;
     }, []);
 
     // Extract the base identifier from a WP image URL (strips size suffix and extension)
@@ -253,11 +254,14 @@ const ProductImageCarousel = ({ product, productLink }: ProductImageCarouselProp
                                     draggable={false}
                                     onError={(e) => {
                                         const img = e.target as HTMLImageElement;
-                                        // If thumbnail failed, try the full-size (-scaled or original)
                                         const current = img.src;
+                                        // Fallback chain: thumbnail → original (no suffix) → placeholder
                                         if (/-\d+x\d+\.(jpg|jpeg|png|webp)$/i.test(current)) {
-                                            const fullSrc = current.replace(/-\d+x\d+\./, '-scaled.');
-                                            img.src = fullSrc;
+                                            // Try original without size suffix
+                                            img.src = current.replace(/-\d+x\d+\./, '.');
+                                        } else if (/-scaled\.(jpg|jpeg|png|webp)$/i.test(current)) {
+                                            // Try without -scaled
+                                            img.src = current.replace(/-scaled\./, '.');
                                         } else {
                                             img.src = '/placeholder.png';
                                         }
