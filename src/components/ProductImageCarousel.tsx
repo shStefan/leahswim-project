@@ -23,13 +23,27 @@ const ProductImageCarousel = ({ product, productLink }: ProductImageCarouselProp
 
     console.log(`🔵🔵🔵 [CAROUSEL RENDER] Product ${product.parentId} "${product.name}" | imageSrc: ${product.imageSrc?.substring(0, 50)}... | originalImages: ${product.originalImages?.length || 0}`);
 
+    // Convert full-size WooCommerce URL to a smaller thumbnail for catalogue cards
+    // e.g., ...hash-scaled.jpg → ...hash-768x768.jpg  or  ...hash.jpg → ...hash-768x768.jpg
+    const toThumbnail = useCallback((src: string, size = '768x768'): string => {
+        if (!src || src === '/placeholder.png') return src;
+        // Already a thumbnail?
+        if (/-\d+x\d+\.(jpg|jpeg|png|webp)$/i.test(src)) return src;
+        // -scaled.jpg → -SIZExSIZE.jpg
+        if (/-scaled\.(jpg|jpeg|png|webp)$/i.test(src)) {
+            return src.replace(/-scaled\./, `-${size}.`);
+        }
+        // original.jpg → original-SIZExSIZE.jpg
+        return src.replace(/\.(jpg|jpeg|png|webp)$/i, `-${size}.$1`);
+    }, []);
+
     // Build gallery: variation image first, then fill from originalImages (up to 3 total)
     const galleryImages = useMemo(() => {
         const images: string[] = [];
 
         // Start with the main variation/product image
         if (product.imageSrc && product.imageSrc !== '/placeholder.png') {
-            images.push(product.imageSrc);
+            images.push(toThumbnail(product.imageSrc));
         }
 
         // Add additional images from the parent product gallery
@@ -37,8 +51,9 @@ const ProductImageCarousel = ({ product, productLink }: ProductImageCarouselProp
         let addedFromGallery = 0;
         if (product.originalImages && product.originalImages.length > 0) {
             for (const img of product.originalImages) {
-                if (img.src && img.src !== product.imageSrc && images.length < 3) {
-                    images.push(img.src);
+                const thumbSrc = toThumbnail(img.src);
+                if (img.src && thumbSrc !== images[0] && img.src !== product.imageSrc && images.length < 3) {
+                    images.push(thumbSrc);
                     addedFromGallery++;
                 }
             }
@@ -54,7 +69,7 @@ const ProductImageCarousel = ({ product, productLink }: ProductImageCarouselProp
         }
 
         return result;
-    }, [product.imageSrc, product.originalImages, product.parentId, product.name]);
+    }, [product.imageSrc, product.originalImages, product.parentId, product.name, toThumbnail]);
 
     const hasMultiple = galleryImages.length > 1;
     const [currentIndex, setCurrentIndex] = useState(0);
@@ -226,7 +241,14 @@ const ProductImageCarousel = ({ product, productLink }: ProductImageCarouselProp
                                     draggable={false}
                                     onError={(e) => {
                                         const img = e.target as HTMLImageElement;
-                                        img.src = '/placeholder.png';
+                                        // If thumbnail failed, try the full-size (-scaled or original)
+                                        const current = img.src;
+                                        if (/-\d+x\d+\.(jpg|jpeg|png|webp)$/i.test(current)) {
+                                            const fullSrc = current.replace(/-\d+x\d+\./, '-scaled.');
+                                            img.src = fullSrc;
+                                        } else {
+                                            img.src = '/placeholder.png';
+                                        }
                                     }}
                                 />
                             )}
