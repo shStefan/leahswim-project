@@ -37,13 +37,24 @@ const ProductImageCarousel = ({ product, productLink }: ProductImageCarouselProp
         return src.replace(/\.(jpg|jpeg|png|webp)$/i, `-${size}.$1`);
     }, []);
 
+    // Extract the base identifier from a WP image URL (strips size suffix and extension)
+    // e.g., "...uploads/image_1c/folder/abc123_def456-768x768.jpg" → "abc123_def456"
+    const getImageBase = useCallback((src: string): string => {
+        const filename = src.split('/').pop() || src;
+        // Remove extension and any size/scaled suffix
+        return filename.replace(/-(scaled|\d+x\d+)\.(jpg|jpeg|png|webp)$/i, '').replace(/\.(jpg|jpeg|png|webp)$/i, '');
+    }, []);
+
     // Build gallery: variation image first, then fill from originalImages (up to 3 total)
     const galleryImages = useMemo(() => {
         const images: string[] = [];
+        const seenBases = new Set<string>(); // Track base hashes to avoid visually-identical images
 
         // Start with the main variation/product image
         if (product.imageSrc && product.imageSrc !== '/placeholder.png') {
-            images.push(toThumbnail(product.imageSrc));
+            const thumb = toThumbnail(product.imageSrc);
+            images.push(thumb);
+            seenBases.add(getImageBase(product.imageSrc));
         }
 
         // Add additional images from the parent product gallery
@@ -51,11 +62,12 @@ const ProductImageCarousel = ({ product, productLink }: ProductImageCarouselProp
         let addedFromGallery = 0;
         if (product.originalImages && product.originalImages.length > 0) {
             for (const img of product.originalImages) {
-                const thumbSrc = toThumbnail(img.src);
-                if (img.src && thumbSrc !== images[0] && img.src !== product.imageSrc && images.length < 3) {
-                    images.push(thumbSrc);
-                    addedFromGallery++;
-                }
+                if (!img.src || images.length >= 3) continue;
+                const base = getImageBase(img.src);
+                if (seenBases.has(base)) continue; // Skip same base image (different size suffix)
+                seenBases.add(base);
+                images.push(toThumbnail(img.src));
+                addedFromGallery++;
             }
         }
 
@@ -69,7 +81,7 @@ const ProductImageCarousel = ({ product, productLink }: ProductImageCarouselProp
         }
 
         return result;
-    }, [product.imageSrc, product.originalImages, product.parentId, product.name, toThumbnail]);
+    }, [product.imageSrc, product.originalImages, product.parentId, product.name, toThumbnail, getImageBase]);
 
     const hasMultiple = galleryImages.length > 1;
     const [currentIndex, setCurrentIndex] = useState(0);
