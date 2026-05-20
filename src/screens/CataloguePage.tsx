@@ -652,10 +652,14 @@ export const CataloguePage = (): JSX.Element => {
                         status: product.status,
                         categories: product.categories,
                         originalImages: (() => {
-                          // Build enriched gallery: parent images + all variation images for this color
+                          // Build enriched gallery: parent images + variation images (color-specific first, then others)
                           const gallerySet = new Set<string>();
                           productImages.forEach(img => { if (img.src) gallerySet.add(img.src); });
                           variationsInGroup.forEach(v => { if (v.image?.src) gallerySet.add(v.image.src); });
+                          // If still < 3, pull from other variations to fill the carousel
+                          if (gallerySet.size < 3) {
+                            detailedVariations.forEach(v => { if (v.image?.src && gallerySet.size < 3) gallerySet.add(v.image.src); });
+                          }
                           return Array.from(gallerySet).map(src => ({ src }));
                         })(),
                       });

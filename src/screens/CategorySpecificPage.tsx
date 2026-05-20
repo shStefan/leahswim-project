@@ -443,12 +443,16 @@ export const CategorySpecificPage = (): JSX.Element => {
                           productImages[0]?.src ||
                           '/placeholder.png';
 
-                        // Build enriched gallery: parent images + all variation images for this color
+                        // Build enriched gallery: parent images + variation images (color-specific first, then others)
                         const gallerySet = new Set<string>();
                         // Add parent product gallery images
                         productImages.forEach(img => { if (img.src) gallerySet.add(img.src); });
-                        // Add ALL variation images for this specific color (different sizes have same color but sometimes different images)
+                        // Add ALL variation images for this specific color
                         colorVariations.forEach(v => { if (v.image?.src) gallerySet.add(v.image.src); });
+                        // If still < 3, pull from other variations to fill the carousel
+                        if (gallerySet.size < 3) {
+                          variations.forEach(v => { if (v.image?.src && gallerySet.size < 3) gallerySet.add(v.image.src); });
+                        }
                         const enrichedGallery = Array.from(gallerySet).map(src => ({ src }));
 
                         return {
