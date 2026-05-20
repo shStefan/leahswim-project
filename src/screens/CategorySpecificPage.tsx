@@ -170,16 +170,9 @@ export const CategorySpecificPage = (): JSX.Element => {
         const sizes = (data.sizes || []).map((s: { name: string }) => s.name);
         setAllAvailableSizes(sizes);
 
-        // Set colors and build name→slug map for server-side filtering
-        const colorData = data.colors || [];
-        const colors = colorData.map((c: { name: string }) => c.name);
+        // Set colors
+        const colors = (data.colors || []).map((c: { name: string }) => c.name);
         setAllAvailableColors(colors);
-        const slugMap: { [name: string]: string } = {};
-        colorData.forEach((c: { name: string; slug: string }) => {
-          if (c.name && c.slug) slugMap[c.name] = c.slug;
-        });
-        setColorNameToSlug(slugMap);
-        console.log(`🎨 Color slug map: ${Object.keys(slugMap).length} entries`);
 
         // Set subcategory counts
         const counts: { [id: string]: number } = {};
@@ -284,27 +277,25 @@ export const CategorySpecificPage = (): JSX.Element => {
       // Use subcategory ID if provided, otherwise use main category ID
       const categoryIdToUse = subCategoryId || category.id.toString();
 
-      // Use server-side filtering when possible for much faster loads
-      const perPage = PRODUCTS_PER_PAGE;
+      // When filtering by color or size, fetch ALL products (not paginated) for client-side filtering
+      // Otherwise, use pagination
+      const isFiltering = selectedColor || selectedSize;
+      const perPage = isFiltering ? 100 : PRODUCTS_PER_PAGE; // Fetch up to 100 products when filtering
 
-      console.log(`🚀 Fetching products for category: ${category.name}${subCategoryId ? ` (subcategory: ${subCategoryId})` : ''} (Page ${page})${selectedColor ? ` [color: ${selectedColor}]` : ''}`);
+      console.log(`🚀 Fetching products for category: ${category.name}${subCategoryId ? ` (subcategory: ${subCategoryId})` : ''}${isFiltering ? ' (filtering mode - fetching all)' : ` (Page ${page})`}`);
 
       // Build API URL for paginated products
       const paramsArray = [
         `category=${categoryIdToUse}`,
         `status=publish`,
         `per_page=${perPage}`,
-        `page=${page}`,
+        `page=${isFiltering ? 1 : page}`, // Always page 1 when filtering
         `_fields=id,name,type,price,regular_price,sale_price,price_html,status,slug,images,attributes,variations,categories,date_modified`
       ];
 
-      // Server-side color filtering via WooCommerce attribute params
-      if (selectedColor && colorNameToSlug[selectedColor]) {
-        paramsArray.push(`attribute=pa_cvet`);
-        paramsArray.push(`attribute_term=${encodeURIComponent(colorNameToSlug[selectedColor])}`);
-        console.log(`🎯 Server-side color filter: pa_cvet=${colorNameToSlug[selectedColor]}`);
-      }
-      // Size and sort filtering still done client-side for consistency
+      // Note: WooCommerce REST API doesn't reliably support attribute_term filtering
+      // So we'll do color and size filtering client-side after fetching products
+      // Sorting is also done client-side for consistency
 
       const params = paramsArray.join('&');
 
@@ -328,23 +319,31 @@ export const CategorySpecificPage = (): JSX.Element => {
         currentPage: page
       });
 
-      // When server-side filtering is active, pagination comes from response headers
-      if (totalPagesHeader) {
-        const pages = parseInt(totalPagesHeader);
-        setTotalPages(pages);
-        console.log(`✅ Total pages from header: ${pages}`);
-      } else if (totalItemsHeader) {
-        const totalItems = parseInt(totalItemsHeader);
-        const calculatedPages = Math.ceil(totalItems / PRODUCTS_PER_PAGE);
-        setTotalPages(calculatedPages);
-        console.log(`✅ Calculated total pages: ${calculatedPages} (${totalItems} items / ${PRODUCTS_PER_PAGE} per page)`);
-      } else if (baseProducts.length === PRODUCTS_PER_PAGE) {
-        setTotalPages(Math.max(2, page + 1));
-        console.log(`⚠️ No pagination headers found, but got full page. Setting totalPages to ${Math.max(2, page + 1)}`);
-      }
+      // When filtering, don't show pagination (all results shown)
+      if (isFiltering) {
+        setTotalPages(1);
+        setHasMoreProducts(false);
+      } else {
+        if (totalPagesHeader) {
+          const pages = parseInt(totalPagesHeader);
+          setTotalPages(pages);
+          console.log(`✅ Total pages from header: ${pages}`);
+        } else if (totalItemsHeader) {
+          // Calculate total pages from total items if header is available
+          const totalItems = parseInt(totalItemsHeader);
+          const calculatedPages = Math.ceil(totalItems / PRODUCTS_PER_PAGE);
+          setTotalPages(calculatedPages);
+          console.log(`✅ Calculated total pages: ${calculatedPages} (${totalItems} items / ${PRODUCTS_PER_PAGE} per page)`);
+        } else if (baseProducts.length === PRODUCTS_PER_PAGE) {
+          // If we got a full page, there's likely more pages
+          // Set at least 2 pages so pagination shows
+          setTotalPages(Math.max(2, page + 1));
+          console.log(`⚠️ No pagination headers found, but got full page. Setting totalPages to ${Math.max(2, page + 1)}`);
+        }
 
-      // Check if we have more products
-      setHasMoreProducts(baseProducts.length === PRODUCTS_PER_PAGE);
+        // Check if we have more products
+        setHasMoreProducts(baseProducts.length === PRODUCTS_PER_PAGE);
+      }
 
       if (!Array.isArray(baseProducts) || baseProducts.length === 0) {
         if (page === 1) setDisplayableProducts([]);
