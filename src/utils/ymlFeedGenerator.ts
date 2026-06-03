@@ -1,4 +1,4 @@
-import { apiEndpoints } from './apiConfig';
+import { slugifyColor } from './colorMap';
 
 interface WooCommerceProduct {
   id: number;
@@ -84,13 +84,25 @@ export class YmlFeedGenerator {
       return null;
     }
 
-    const price = parseFloat(product.price || product.regular_price || '0');
+    // Use discounted price (sale_price) if available, otherwise use regular price
+    let price = 0;
+    if (product.sale_price && parseFloat(product.sale_price) > 0) {
+      // Product is on sale - use the discounted price
+      price = parseFloat(product.sale_price);
+    } else if (product.regular_price && parseFloat(product.regular_price) > 0) {
+      // No sale price - use regular price
+      price = parseFloat(product.regular_price);
+    } else if (product.price && parseFloat(product.price) > 0) {
+      // Fallback to generic price field
+      price = parseFloat(product.price);
+    }
+
     if (price <= 0) {
       return null;
     }
 
     // Build frontend URL with relevant parameters
-    let frontendUrl = `https://leahcation.com/product/${product.id}`;
+    let frontendUrl = `https://leahcation.ru/product/${product.id}`;
     const urlParams = new URLSearchParams();
     
     // Add relevant parameters based on product attributes
@@ -100,7 +112,7 @@ export class YmlFeedGenerator {
         if (attribute.slug === 'pa_cvet' || attribute.slug === 'pa_color' || attribute.slug === 'pa_print' || attribute.name.toLowerCase().includes('цвет') || attribute.name.toLowerCase().includes('принт')) {
           if (attribute.options && attribute.options.length > 0) {
             // Use the first available color/print option
-            urlParams.set('print', attribute.options[0]);
+            urlParams.set('print', slugifyColor(attribute.options[0]));
           }
         }
         
@@ -120,15 +132,12 @@ export class YmlFeedGenerator {
       frontendUrl += '?' + paramString;
     }
 
-    // Convert RUB to EUR (rate: 92 RUB = 1 EUR) and round to remove decimals
-    const eurPrice = Math.round(price / 92);
-
     return {
       id: product.id,
       available: true,
       url: frontendUrl,
-      price: eurPrice,
-      currencyId: 'EUR',
+      price: price,
+      currencyId: 'RUB',
       categoryId: product.categories.length > 0 ? product.categories[0].id : 1,
       picture: product.images.length > 0 ? product.images[0].src : '',
       name: product.name,
@@ -196,7 +205,7 @@ export class YmlFeedGenerator {
     <company>${this.escapeXml(this.company)}</company>
     <url>${this.escapeXml(this.shopUrl)}</url>
     <currencies>
-      <currency id="EUR" rate="1"/>
+      <currency id="RUB" rate="1"/>
     </currencies>
     <categories>
 ${categories}    </categories>
@@ -207,23 +216,27 @@ ${offers}    </offers>
   }
 }
 
-// Utility function to fetch products from WooCommerce
+
+// Utility function to fetch products from WooCommerce via server-side proxy
 export async function fetchWooCommerceProducts(): Promise<WooCommerceProduct[]> {
   try {
-    // Check if we're running in Node.js (server-side) or browser (client-side)
+    // Route through nginx proxy (/wc-api/) on production — keys are injected server-side
+    // Route through Vite dev proxy on development
     const isServer = typeof window === 'undefined';
-    
-    // Use apiEndpoints which handles dev/prod logic automatically
-    const { url, options } = apiEndpoints.products('per_page=100&status=publish');
-    
-    console.log(`Fetching from: ${url} (${isServer ? 'server' : 'client'} side)`);
-    
-    const response = await fetch(url, options);
-    
+    const wooApiUrl = isServer
+      ? 'https://leahcation.ru/wc-api/products?per_page=100&status=publish'
+      : '/wc-api/products?per_page=100&status=publish';
+
+    console.log(`Fetching from: ${wooApiUrl} (${isServer ? 'server' : 'client'} side)`);
+
+    const response = await fetch(wooApiUrl, {
+      headers: { 'Accept': 'application/json' },
+    });
+
     if (!response.ok) {
       throw new Error(`HTTP error! status: ${response.status}`);
     }
-    
+
     const products = await response.json();
     console.log(`Fetched ${products.length} products from WooCommerce`);
     return products;
@@ -233,12 +246,13 @@ export async function fetchWooCommerceProducts(): Promise<WooCommerceProduct[]> 
   }
 }
 
+
 // Main function to generate YML feed
 export async function generateYandexFeed(): Promise<string> {
   const products = await fetchWooCommerceProducts();
   const generator = new YmlFeedGenerator(
     'Leahcation', // Your shop name
-    'https://leahcation.com', // Your shop URL (English version)
+    'https://leahcation.ru', // Your shop URL
     'Leahcation' // Your company name
   );
   

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { Heart, ChevronDown, Menu, X, ChevronLeft, ChevronRight, Play, ShoppingBag } from 'lucide-react';
 import { Button } from '../components/ui/button';
 import { Link, useParams, useLocation, useNavigate, useSearchParams } from 'react-router-dom';
@@ -9,12 +9,10 @@ import { RelatedProductsSlider } from '../components/RelatedProductsSlider';
 import SizeChartModal from '../components/SizeChartModal'; // Import the modal
 import { DynamicText } from '../components/DynamicText';
 import { useTranslation } from '../context/TranslationContext';
-import { convertAndFormatPrice } from '../utils/priceUtils';
-import { LoadingWrapper } from '../components/LoadingWrapper';
-import { TranslatedHTML } from '../components/TranslatedHTML';
 import { apiEndpoints } from '../utils/apiConfig';
+import { DiscountPrice } from '../components/DiscountPrice';
+import { getActualPrice } from '../utils/priceHelpers';
 import { getColorHex, slugifyColor, resolveColorFromSlug } from '../utils/colorMap';
-import { isProductHidden } from '../utils/hiddenProducts';
 
 interface MediaItem {
   type: 'image' | 'video';
@@ -33,6 +31,9 @@ interface Product {
   id: number;
   name: string;
   price: string;
+  regular_price?: string; // Original price
+  sale_price?: string; // Discounted price  
+  price_html?: string; // HTML formatted price with discount display
   description: string;
   short_description?: string;
   images: Array<{ id: number; src: string }>;
@@ -57,9 +58,11 @@ interface ProductVariation {
   // Add other variation-specific fields if needed
 }
 
+// WooCommerce API credentials
+
 
 export const ProductPage = (): JSX.Element => {
-  const { id: idFromParams } = useParams<{ id:string }>();
+  const { id: idFromParams } = useParams<{ id: string }>();
   const location = useLocation();
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
@@ -70,25 +73,25 @@ export const ProductPage = (): JSX.Element => {
   const initialSelectedColorFromStateOrUrl = linkState?.selectedColor || searchParams.get('print');
 
   const [product, setProduct] = useState<Product | null>(
-    linkState?.productData ? 
-    { // Pre-fill from DisplayableProduct if available
-      id: parseInt(linkState.productData.parentId),
-      name: linkState.productData.name,
-      price: linkState.productData.price,
-      images: linkState.productData.originalImages || [{id: 0, src: linkState.productData.imageSrc}],
-      description: '', // Will be fetched
-      short_description: '', // Will be fetched
-      attributes: linkState.productData.attributes || [],
-      categories: linkState.productData.categories || [], // Added categories pre-fill
-      // variations will be fetched
-    } 
-    : null
+    linkState?.productData ?
+      { // Pre-fill from DisplayableProduct if available
+        id: parseInt(linkState.productData.parentId),
+        name: linkState.productData.name,
+        price: linkState.productData.price,
+        images: linkState.productData.originalImages || [{ id: 0, src: linkState.productData.imageSrc }],
+        description: '', // Will be fetched
+        short_description: '', // Will be fetched
+        attributes: linkState.productData.attributes || [],
+        categories: linkState.productData.categories || [], // Added categories pre-fill
+        // variations will be fetched
+      }
+      : null
   );
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
   const [selectedColor, setSelectedColor] = useState<string | null>(initialSelectedColorFromStateOrUrl);
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const [currentMediaIndex, setCurrentMediaIndex] = useState(0);
-  const [isMenuOpen, setIsMenuOpen] = useState(false); 
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   // const [isCartDrawerOpen, setIsCartDrawerOpen] = useState(false); // This local state is not used for the Header's cart, but might be for a local cart UI if any
   const { cart, loading: cartLoading, addToCart, removeFromCart, isCartDrawerOpen, setIsCartDrawerOpen } = useCart(); // use isCartDrawerOpen from context for the product page cart drawer
   const [loading, setLoading] = useState(true);
@@ -101,6 +104,13 @@ export const ProductPage = (): JSX.Element => {
   const [loadingRelated, setLoadingRelated] = useState<boolean>(false);
   const [isSizeChartModalOpen, setIsSizeChartModalOpen] = useState(false); // State for size chart modal
   const [displayPrice, setDisplayPrice] = useState<string | null>(null);
+
+  // Add simple cache to prevent refetching the same product
+  const [cachedProductId, setCachedProductId] = useState<string | null>(null);
+
+  // Ref and state for lazy loading related products
+  const relatedProductsRef = useRef<HTMLDivElement>(null);
+  const [relatedProductsFetched, setRelatedProductsFetched] = useState(false);
 
   // Scroll to top on component mount
   useEffect(() => {
@@ -126,24 +136,27 @@ export const ProductPage = (): JSX.Element => {
         if (!variation || !Array.isArray(variation.attributes)) {
           return false;
         }
+
         // Check for a matching color attribute.
         const hasMatchingColor = variation.attributes.some(attr =>
-          attr && // Ensure attribute exists
-          (attr.slug === 'pa_print' || // Match by slug 'pa_print'
-            (attr.name && attr.name.toLowerCase() === 'принт') || // Match by name 'принт'
-            (attr.name && attr.name.toLowerCase() === 'color')) && // Match by name 'color'
-          attr.option === selectedColor // Option must match selectedColor
+          attr &&
+          (attr.slug === 'pa_print' ||
+            (attr.name && attr.name.toLowerCase() === 'принт') ||
+            (attr.name && attr.name.toLowerCase() === 'color')) &&
+          attr.option === selectedColor
         );
+
         // If no color match, this variation is not the one.
         if (!hasMatchingColor) {
           return false;
         }
+
         // Check for a matching size attribute.
         return variation.attributes.some(attr =>
-          attr && // Ensure attribute exists
-          (attr.slug === 'pa_size' || // Match by slug 'pa_size'
-            (attr.name && attr.name.toLowerCase() === 'размер')) && // Match by name 'размер'
-          attr.option === selectedSize // Option must match selectedSize
+          attr &&
+          (attr.slug === 'pa_size' ||
+            (attr.name && attr.name.toLowerCase() === 'размер')) &&
+          attr.option === selectedSize
         );
       });
     } else {
@@ -190,11 +203,12 @@ export const ProductPage = (): JSX.Element => {
   const cartCount = cart?.items?.reduce((sum: number, item: any) => sum + item.quantity, 0) || 0;
 
   // Effect to update URL search parameter 'print' when selectedColor changes
+  // Writes a clean ASCII slug to the URL instead of raw Russian text
   useEffect(() => {
     const currentPrintParam = searchParams.get('print');
     if (selectedColor) {
       const slugged = slugifyColor(selectedColor);
-      if (slugged !== currentPrintParam) {
+      if (slugged && slugged !== currentPrintParam) {
         const newSearchParams = new URLSearchParams(searchParams);
         newSearchParams.set('print', slugged);
         setSearchParams(newSearchParams, { replace: true });
@@ -211,9 +225,41 @@ export const ProductPage = (): JSX.Element => {
 
   // Get product data (main product and then variations)
   useEffect(() => {
+    // Helper function to add delay for retry logic
+    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+
+    // Retry function with exponential backoff for 429 errors
+    const fetchWithRetry = async (url: string, options: any, maxRetries = 3): Promise<Response> => {
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        const response = await fetch(url, options);
+
+        if (response.status === 429) {
+          if (attempt === maxRetries) {
+            throw new Error(`Rate limited after ${maxRetries} attempts. Please wait and try again.`);
+          }
+
+          const waitTime = Math.pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s, 8s
+          console.warn(`Rate limited (429), retrying in ${waitTime / 1000}s... (attempt ${attempt}/${maxRetries})`);
+          await delay(waitTime);
+          continue;
+        }
+
+        return response; // Return successful response or non-429 error
+      }
+
+      throw new Error('Max retries exceeded');
+    };
+
     // Changed to accept productId as an argument
-    const fetchProductData = async (currentProductId: string | undefined) => { 
+    const fetchProductData = async (currentProductId: string | undefined) => {
       if (!currentProductId) return;
+
+      // Check cache to prevent refetching the same product
+      if (cachedProductId === currentProductId && product) {
+        console.log(`Product ${currentProductId} already cached, skipping fetch`);
+        return;
+      }
+
       setLoading(true);
       // setError(null); // Keep error until new data is successfully fetched or truly fails
       // setProduct(null); // Don't nullify if we have pre-filled data
@@ -223,31 +269,34 @@ export const ProductPage = (): JSX.Element => {
       // setSelectedSize(null);
 
       try {
-        // Define fetch promises
-        const productFields = 'id,name,price,regular_price,sale_price,images,attributes,categories,type,status';
+        // Define fetch promises with optimized field selection
+        const productFields = 'id,name,price,regular_price,sale_price,price_html,description,short_description,images,attributes,categories,type,status';
+        const variationFields = 'id,price,regular_price,sale_price,attributes,image,status,description,variation_gallery,stock_status';
+
         const { url: productUrl, options: productOptions } = apiEndpoints.products(`include=${currentProductId}&_fields=${productFields}`);
-        const productPromise = fetch(productUrl, productOptions);
+        const { url: variationsUrl, options: variationsOptions } = apiEndpoints.variations(currentProductId.toString(), `per_page=20&_fields=${variationFields}`);
 
-        const { url: variationsUrl, options: variationsOptions } = apiEndpoints.variations(currentProductId, 'per_page=100&_fields=id,price,regular_price,sale_price,attributes,image,status,stock_status,description,variation_gallery');
-        const variationsPromise = fetch(variationsUrl, variationsOptions);
-
-        // Await both promises in parallel
+        // Use retry logic for both requests
         const [productResponse, variationsResponse] = await Promise.all([
-          productPromise,
-          variationsPromise
+          fetchWithRetry(productUrl, productOptions),
+          fetchWithRetry(variationsUrl, variationsOptions)
         ]);
 
         if (!productResponse.ok) {
           throw new Error(`Failed to fetch product: ${productResponse.status} ${await productResponse.text()}`);
         }
         const productDataArray: Product[] = await productResponse.json();
-        const productData: Product = productDataArray[0]; // Extract the first product from the array (include returns array)
-        
+        const productData: Product = productDataArray[0]; // Extract the first product from the array
+
         if (!productData) {
           throw new Error('Product not found in API response');
         }
-        
+
         setProduct(productData);
+        setCachedProductId(currentProductId); // Cache the product ID to prevent refetching
+        // Reset related products fetch state for new product
+        setRelatedProductsFetched(false);
+        setRelatedProducts([]);
         console.log('Fetched product data:', productData); // Log the entire product data
 
         if (!variationsResponse.ok) {
@@ -260,39 +309,34 @@ export const ProductPage = (): JSX.Element => {
         }
 
         // Extract available colors from attributes for swatches (from main product data)
-        const printAttribute = productData.attributes?.find((attr: ProductAttribute) => 
-          attr.name.toLowerCase() === 'принт' || 
+        const printAttribute = productData?.attributes?.find((attr: ProductAttribute) =>
+          attr.name.toLowerCase() === 'принт' ||
           attr.name.toLowerCase() === 'print' ||
-          attr.slug === 'pa_print'
+          attr.slug?.startsWith('pa_print')
         );
         const colors = printAttribute?.options || [];
         setAllColors(colors);
 
         // Set initial selected color and size (or confirm existing from link state/URL)
         // The selectedColor state is already initialized from linkState or URL param.
-        // Here, we just ensure it's valid if it came from URL, or set default if nothing was provided.
+        // Here, we resolve slugs or legacy URL-encoded names back to real color names.
         if (initialSelectedColorFromStateOrUrl) {
-          // If it came from link state, it's an exact color name
-          if (colors.includes(initialSelectedColorFromStateOrUrl)) {
-            if (selectedColor !== initialSelectedColorFromStateOrUrl) {
-              setSelectedColor(initialSelectedColorFromStateOrUrl);
-            }
-          } else {
-            // It may be a slugified URL value — resolve it
-            const resolved = resolveColorFromSlug(initialSelectedColorFromStateOrUrl, colors);
-            if (resolved && selectedColor !== resolved) {
+          // Try to resolve: exact match, case-insensitive, or slug-based
+          const resolved = resolveColorFromSlug(initialSelectedColorFromStateOrUrl, colors);
+          if (resolved) {
+            if (selectedColor !== resolved) {
               setSelectedColor(resolved);
-            } else if (!resolved && colors.length > 0 && !selectedColor) {
-              setSelectedColor(colors[0]);
             }
+          } else if (colors.length > 0 && !selectedColor) {
+            setSelectedColor(colors[0]);
           }
         } else if (colors.length > 0 && !selectedColor) { // Only set default if no color is selected yet
           setSelectedColor(colors[0]);
         }
         // If selectedColor was already set (e.g. from link state) and is valid, it remains.
 
-        const sizeAttribute = productData.attributes?.find((attr: ProductAttribute) => 
-          attr.name.toLowerCase() === 'размер' || 
+        const sizeAttribute = productData?.attributes?.find((attr: ProductAttribute) =>
+          attr.name.toLowerCase() === 'размер' ||
           attr.name.toLowerCase() === 'size' ||
           attr.slug === 'pa_size'
         );
@@ -309,58 +353,191 @@ export const ProductPage = (): JSX.Element => {
     };
 
     // if (location.state?.product) { // Old logic for location.state.product
-      // This block will be mostly replaced by the pre-fill in useState and the direct call to fetchProductData
+    // This block will be mostly replaced by the pre-fill in useState and the direct call to fetchProductData
     // } else {
     // Always fetch, productIdToFetch will be from state or params
-    fetchProductData(productIdToFetch); 
+    fetchProductData(productIdToFetch);
     // }
 
   }, [productIdToFetch]); // location.state is not a stable dependency, use derived productIdToFetch
 
-  // Fetch related products when main product data is available
+  // Intersection Observer for lazy loading related products
   useEffect(() => {
-    if (product && product.categories && product.categories.length > 0) {
-      const firstCategoryId = product.categories[0].id;
-      if (firstCategoryId) {
-        setLoadingRelated(true);
-        console.log(`Fetching related products for category ID: ${firstCategoryId}, excluding product ID: ${product.id}`); 
-        const { url: relatedUrl, options: relatedOptions } = apiEndpoints.products(`category=${firstCategoryId}&per_page=10&exclude=${product.id}`);
-        fetch(relatedUrl, relatedOptions)
-        .then(res => res.json())
-        .then((data: Product[]) => { // Ensure type is Product[]
-          console.log('[ProductPage] Fetched related products raw data:', data);
-          const filteredRelatedProducts = data.filter(p => p.id !== product.id && !isProductHidden(p.id));
-          console.log('[ProductPage] Filtered related products (to be set in state):', filteredRelatedProducts);
-          setRelatedProducts(filteredRelatedProducts); // Double check exclusion
-          setLoadingRelated(false);
-        })
-        .catch(err => {
-          console.error("Error fetching related products:", err);
-          setLoadingRelated(false);
-        });
-      } else {
-        console.warn("Could not fetch related products: firstCategoryId is missing or invalid.", product.categories);
-        setLoadingRelated(false); // Ensure loading is stopped
-        setRelatedProducts([]);   // Ensure related products is empty
+    if (!relatedProductsRef.current || relatedProductsFetched) return;
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting && !relatedProductsFetched) {
+          setRelatedProductsFetched(true);
+          fetchRelatedProducts();
+        }
+      },
+      {
+        rootMargin: '100px', // Start loading 100px before the section is visible
+      }
+    );
+
+    observer.observe(relatedProductsRef.current);
+
+    return () => observer.disconnect();
+  }, [relatedProductsRef.current, relatedProductsFetched, product?.id]);
+
+  // Function to fetch related products
+  const fetchRelatedProducts = async () => {
+    if (!product || !product.categories || product.categories.length === 0) {
+      console.warn("Could not fetch related products: product or product.categories are missing or empty.", product);
+      return;
+    }
+
+    // Helper functions for retry logic
+    const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
+    const fetchWithRetry = async (url: string, options: any, maxRetries = 3): Promise<Response> => {
+      for (let attempt = 1; attempt <= maxRetries; attempt++) {
+        const response = await fetch(url, options);
+
+        if (response.status === 429) {
+          if (attempt === maxRetries) {
+            throw new Error(`Rate limited after ${maxRetries} attempts. Please wait and try again.`);
+          }
+
+          const waitTime = Math.pow(2, attempt) * 1000; // Exponential backoff: 2s, 4s, 8s
+          console.warn(`Related products rate limited (429), retrying in ${waitTime / 1000}s... (attempt ${attempt}/${maxRetries})`);
+          await delay(waitTime);
+          continue;
+        }
+
+        return response; // Return successful response or non-429 error
+      }
+
+      throw new Error('Max retries exceeded');
+    };
+
+    const firstCategoryId = product.categories[0].id;
+    if (firstCategoryId) {
+      setLoadingRelated(true);
+      console.log(`[Lazy Loading] Fetching related products for category ID: ${firstCategoryId}, excluding product ID: ${product.id}`);
+
+      try {
+        // Limit fields for related products to reduce payload
+        const relatedFields = 'id,name,price,regular_price,sale_price,price_html,images';
+        const { url, options } = apiEndpoints.products(`category=${firstCategoryId}&per_page=6&exclude=${product.id}&_fields=${relatedFields}`);
+        const response = await fetchWithRetry(url, options);
+        const data: Product[] = await response.json();
+
+        console.log('[ProductPage] Fetched related products raw data:', data);
+        const filteredRelatedProducts = data.filter(p => p.id !== product.id);
+        console.log('[ProductPage] Filtered related products (to be set in state):', filteredRelatedProducts);
+        setRelatedProducts(filteredRelatedProducts); // Double check exclusion
+        setLoadingRelated(false);
+      } catch (err) {
+        console.error("Error fetching related products:", err);
+        setLoadingRelated(false);
       }
     } else {
-      console.warn("Could not fetch related products: product or product.categories are missing or empty.", product);
+      console.warn("Could not fetch related products: firstCategoryId is missing or invalid.", product.categories);
       setLoadingRelated(false); // Ensure loading is stopped
       setRelatedProducts([]);   // Ensure related products is empty
     }
-  }, [product]); // Depends on product
+  };
 
   // Memoize the color to image mapping
   const colorImageMap = useMemo(() => {
     const map: { [color: string]: string } = {};
     productVariations.forEach(variation => {
-      const colorAttribute = variation.attributes.find(attr => attr.slug === 'pa_print');
+      const colorAttribute = variation.attributes?.find(attr =>
+        attr.slug?.startsWith('pa_print') ||
+        attr.name?.toLowerCase() === 'принт'
+      );
       if (colorAttribute && colorAttribute.option && variation.image?.src) {
         map[colorAttribute.option] = variation.image.src;
       }
     });
     return map;
   }, [productVariations]);
+
+  // Memoize the color stock status mapping - a color is in stock if at least one variation has stock_status === 'instock'
+  const colorStockStatus = useMemo(() => {
+    const stockMap: { [color: string]: boolean } = {};
+    productVariations.forEach(variation => {
+      const colorAttribute = variation.attributes?.find(attr =>
+        attr.slug?.startsWith('pa_print') ||
+        attr.name?.toLowerCase() === 'принт' ||
+        attr.name?.toLowerCase() === 'print'
+      );
+      if (colorAttribute && colorAttribute.option) {
+        const color = colorAttribute.option;
+        // Mark as in stock if any variation of this color is in stock
+        if (variation.stock_status === 'instock') {
+          stockMap[color] = true;
+        } else if (stockMap[color] === undefined) {
+          stockMap[color] = false;
+        }
+      }
+    });
+    return stockMap;
+  }, [productVariations]);
+
+  // Memoize the size stock status based on selected color - tracks which sizes are available for the current color
+  const sizeStockStatus = useMemo(() => {
+    const stockMap: { [size: string]: boolean } = {};
+    if (!selectedColor) return stockMap;
+
+    productVariations.forEach(variation => {
+      const colorAttribute = variation.attributes?.find(attr =>
+        attr.slug?.startsWith('pa_print') ||
+        attr.name?.toLowerCase() === 'принт' ||
+        attr.name?.toLowerCase() === 'print'
+      );
+      const sizeAttribute = variation.attributes?.find(attr =>
+        attr.slug?.startsWith('pa_razmer') ||
+        attr.slug?.startsWith('pa_size') ||
+        attr.name?.toLowerCase() === 'размер' ||
+        attr.name?.toLowerCase() === 'size'
+      );
+
+      // Only consider variations that match the selected color
+      if (colorAttribute?.option === selectedColor && sizeAttribute?.option) {
+        const size = sizeAttribute.option;
+        if (variation.stock_status === 'instock') {
+          stockMap[size] = true;
+        } else if (stockMap[size] === undefined) {
+          stockMap[size] = false;
+        }
+      }
+    });
+    return stockMap;
+  }, [productVariations, selectedColor]);
+
+  // Auto-select the first in-stock color when stock data updates
+  useEffect(() => {
+    if (Object.keys(colorStockStatus).length === 0 || allColors.length === 0) return;
+
+    // If current selected color is in stock, keep it
+    if (selectedColor && colorStockStatus[selectedColor] === true) return;
+
+    // Pick the first in-stock color
+    const firstInStockColor = allColors.find((color: string) => colorStockStatus[color] === true);
+    if (firstInStockColor) {
+      setSelectedColor(firstInStockColor);
+    }
+  }, [colorStockStatus, allColors]);
+
+  // Auto-select the first in-stock size when color changes or stock data updates
+  useEffect(() => {
+    if (!selectedColor || Object.keys(sizeStockStatus).length === 0) return;
+
+    // If current selected size is not in stock for this color, pick the first one that is
+    if (selectedSize && sizeStockStatus[selectedSize] === true) return; // Current selection is valid
+
+    const allSizesFromProduct = product?.attributes?.find((attr: ProductAttribute) =>
+      attr.name.toLowerCase() === 'размер' ||
+      attr.name.toLowerCase() === 'size' ||
+      attr.slug === 'pa_size'
+    )?.options || [];
+
+    const firstInStockSize = allSizesFromProduct.find((size: string) => sizeStockStatus[size] === true);
+    setSelectedSize(firstInStockSize || null);
+  }, [selectedColor, sizeStockStatus]);
 
   // Determine the main image based on selected color and variations
   const mainImage = useMemo(() => {
@@ -372,66 +549,78 @@ export const ProductPage = (): JSX.Element => {
 
   // Media items for the gallery
   const mediaItems: MediaItem[] = useMemo(() => {
-    const items: MediaItem[] = [];
-    const addedUrls = new Set<string>(); // To prevent duplicate media by URL
-    let videoItem: MediaItem | null = null; // Store video separately to add it first at the end
+    const addedUrls = new Set<string>();
+
+    // Collect all image URLs (variation main + gallery)
+    const imageItems: MediaItem[] = [];
+    // Collect all video URLs from description
+    const videoItems: MediaItem[] = [];
 
     if (currentVariation) {
-      // 1. Selected variation's main image (add first so it appears first when no video)
+      // 1. Variation main image
       if (currentVariation.image?.src) {
         const imageUrl = currentVariation.image.src;
         if (!addedUrls.has(imageUrl)) {
-          items.push({ type: 'image', url: imageUrl });
+          imageItems.push({ type: 'image', url: imageUrl });
           addedUrls.add(imageUrl);
         }
       }
 
-      // 2. Variation-specific gallery (if available)
-      if (currentVariation.variation_gallery && currentVariation.variation_gallery.urls && currentVariation.variation_gallery.urls.length > 0) {
-        currentVariation.variation_gallery.urls.forEach(url => {
+      // 2. Variation-specific gallery
+      if (currentVariation.variation_gallery?.urls?.length > 0) {
+        currentVariation.variation_gallery.urls.forEach((url: string) => {
           if (url && !addedUrls.has(url)) {
-            items.push({ type: 'image', url });
+            imageItems.push({ type: 'image', url });
             addedUrls.add(url);
           }
         });
       }
 
-      // 3. Video from selected variation's description (store to add at beginning)
+      // 3. Extract ALL videos from variation description
+      // WP shortcode has same URL twice: once with ?_=N (src attr) and once clean (href/text)
+      // Normalize by stripping query params to avoid duplicates
       if (currentVariation.description && typeof currentVariation.description === 'string') {
-        const videoMatch = currentVariation.description.match(/<video.*?src=["'](.*?)["']/i);
-        if (videoMatch && videoMatch[1]) {
-          const videoUrl = videoMatch[1];
-          if (!addedUrls.has(videoUrl)) { // Check if video URL itself is already added
-            const posterUrl = currentVariation.image?.src; 
-            // Try to use variation image as poster, only if it's not the video itself
-            const actualPoster = (posterUrl && posterUrl !== videoUrl && !addedUrls.has(posterUrl)) ? posterUrl : undefined;
-            
-            videoItem = {
-              type: 'video', 
-              url: videoUrl, 
-              thumbnail: actualPoster
-            };
-            addedUrls.add(videoUrl);
-            if (actualPoster) addedUrls.add(actualPoster);
+        const urlMatches = [...currentVariation.description.matchAll(/(https?:\/\/[^\s,"'<>]+\.(?:mp4|webm)(?:[^\s,"'<>]*)?)/gi)];
+        urlMatches.forEach(m => {
+          const clean = m[1].split('?')[0]; // strip ?_=N query params
+          if (clean && !addedUrls.has(clean)) {
+            videoItems.push({ type: 'video', url: clean, thumbnail: currentVariation.image?.src });
+            addedUrls.add(clean);
           }
+        });
+        // Fallback: <source src="..."> or <video src="..."> tags
+        if (videoItems.length === 0) {
+          const tagMatches = [...currentVariation.description.matchAll(/<(?:source|video)[^>]+src=["'](.*?)["']/gi)];
+          tagMatches.forEach(m => {
+            const clean = m[1].split('?')[0];
+            if (clean && !addedUrls.has(clean)) {
+              videoItems.push({ type: 'video', url: clean, thumbnail: currentVariation.image?.src });
+              addedUrls.add(clean);
+            }
+          });
         }
       }
     } else if (mainImage && mainImage !== '/placeholder.png') {
-      // Fallback to mainImage (derived from selectedColor or parent product's first image)
-      // if no specific currentVariation is resolved but a mainImage is determined
-       if (!addedUrls.has(mainImage)) {
-        items.push({ type: 'image', url: mainImage });
+      if (!addedUrls.has(mainImage)) {
+        imageItems.push({ type: 'image', url: mainImage });
         addedUrls.add(mainImage);
       }
     }
 
-    // If video exists, add it to the beginning
-    if (videoItem) {
-      items.unshift(videoItem);
+    // Build final list: if no videos → just images
+    // If videos → interleave: image, video, image, video, image...
+    let items: MediaItem[] = [];
+    if (videoItems.length === 0) {
+      items = imageItems;
+    } else {
+      let imgIdx = 0; let vidIdx = 0;
+      while (imgIdx < imageItems.length || vidIdx < videoItems.length) {
+        if (imgIdx < imageItems.length) items.push(imageItems[imgIdx++]);
+        if (vidIdx < videoItems.length) items.push(videoItems[vidIdx++]);
+      }
     }
 
-    // 4. Add images from the parent product's gallery (`product.images`)
-    // This acts as a fallback ONLY when we have no variation-specific media
+    // Last resort: parent product images
     if (items.length === 0 && product?.images) {
       product.images.forEach(img => {
         if (img.src && !addedUrls.has(img.src)) {
@@ -440,14 +629,9 @@ export const ProductPage = (): JSX.Element => {
         }
       });
     }
-    
-    // If after all this, no media items, add a default placeholder
-    if (items.length === 0) {
-       return [{ type: 'image', url: '/placeholder.png' }];
-    }
 
-    return items;
-  }, [product, currentVariation, mainImage]); // colorImageMap might be less relevant now with direct variation_gallery
+    return items.length > 0 ? items : [{ type: 'image', url: '/placeholder.png' }];
+  }, [product, currentVariation, mainImage]);
 
   // Reset media index only when mediaItems array itself changes (e.g. new product loaded)
   useEffect(() => {
@@ -464,19 +648,86 @@ export const ProductPage = (): JSX.Element => {
     setCurrentMediaIndex((prevIndex) => (prevIndex - 1 + mediaItems.length) % mediaItems.length);
   };
 
+  // Swipe/drag state for gallery
+  const swipeStartXRef = useRef(0);
+  const swipeCurrentXRef = useRef(0);
+  const isDraggingRef = useRef(false);
+  const [swipeDragging, setSwipeDragging] = useState(false);
+  const [swipeOffset, setSwipeOffset] = useState(0);
+  const SWIPE_THRESHOLD = 15;
+
+  const finishDrag = () => {
+    if (!isDraggingRef.current) return;
+    isDraggingRef.current = false;
+    const diff = swipeCurrentXRef.current - swipeStartXRef.current;
+    setSwipeDragging(false);
+    setSwipeOffset(0);
+    if (Math.abs(diff) > SWIPE_THRESHOLD && mediaItems.length > 1) {
+      if (diff < 0 && currentMediaIndex < mediaItems.length - 1) nextMedia();
+      else if (diff > 0 && currentMediaIndex > 0) prevMedia();
+    }
+    window.removeEventListener('mousemove', onWindowMouseMove);
+    window.removeEventListener('mouseup', onWindowMouseUp);
+  };
+
+  const onWindowMouseMove = (e: MouseEvent) => {
+    if (!isDraggingRef.current) return;
+    swipeCurrentXRef.current = e.clientX;
+    setSwipeOffset(e.clientX - swipeStartXRef.current);
+  };
+
+  const onWindowMouseUp = () => finishDrag();
+
+  // Touch handlers
+  const onGalleryTouchStart = (e: React.TouchEvent) => {
+    swipeStartXRef.current = e.touches[0].clientX;
+    swipeCurrentXRef.current = e.touches[0].clientX;
+    setSwipeDragging(true);
+    setSwipeOffset(0);
+  };
+  const onGalleryTouchMove = (e: React.TouchEvent) => {
+    swipeCurrentXRef.current = e.touches[0].clientX;
+    setSwipeOffset(e.touches[0].clientX - swipeStartXRef.current);
+  };
+  const onGalleryTouchEnd = () => {
+    const diff = swipeCurrentXRef.current - swipeStartXRef.current;
+    setSwipeDragging(false);
+    setSwipeOffset(0);
+    if (Math.abs(diff) > SWIPE_THRESHOLD && mediaItems.length > 1) {
+      if (diff < 0 && currentMediaIndex < mediaItems.length - 1) nextMedia();
+      else if (diff > 0 && currentMediaIndex > 0) prevMedia();
+    }
+  };
+
+  // Mouse drag handlers — attach to window so fast movement never loses tracking
+  const onGalleryMouseDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    swipeStartXRef.current = e.clientX;
+    swipeCurrentXRef.current = e.clientX;
+    isDraggingRef.current = true;
+    setSwipeDragging(true);
+    setSwipeOffset(0);
+    window.addEventListener('mousemove', onWindowMouseMove);
+    window.addEventListener('mouseup', onWindowMouseUp);
+  };
+  // These are kept for the div but the real work happens via window listeners
+  const onGalleryMouseMove = () => {};
+  const onGalleryMouseUp = () => {};
+
+
   const handleAddToCart = async () => {
     if (!product) return;
 
     // Determine ID and Parent ID for cart item
     let itemIdToAdd: string;
     let itemParentId: string | undefined = undefined;
-    let itemPrice = product.price; // Default to parent product price
+    let itemPrice = getActualPrice(product); // Use discounted price from parent product
     let itemThumbnail = product.images?.[0]?.src;
 
     if (currentVariation) {
       itemIdToAdd = String(currentVariation.id);
       itemParentId = String(product.id); // Parent product's ID
-      if (currentVariation.price) itemPrice = currentVariation.price;
+      // Keep using parent product's discounted price since variations inherit discounts
       if (currentVariation.image?.src) itemThumbnail = currentVariation.image.src;
     } else if (product.type === 'simple') { // Assuming you have a 'type' field or similar logic for simple products
       itemIdToAdd = String(product.id);
@@ -484,7 +735,7 @@ export const ProductPage = (): JSX.Element => {
     } else {
       // It's a variable product but no specific variation selected (e.g. if size not chosen yet)
       // Optionally, prevent adding to cart or add default variation if applicable
-                    alert(t('common.pleaseSelectOptions'));
+      alert(t('common.pleaseSelectOptions'));
       return;
     }
 
@@ -499,6 +750,19 @@ export const ProductPage = (): JSX.Element => {
       title: product.name + (currentVariation ? ` - ${selectedColor} / ${selectedSize}` : ''), // Add variation details to title
       unit_price: itemPrice,
       thumbnail: itemThumbnail || '/placeholder.png',
+      // Include discount information for checkout validation
+      // Use parent product's discount info since variations inherit it
+      regular_price: product.regular_price,
+      sale_price: product.sale_price,
+      price_html: product.price_html,
+      // Add variation attributes for WooCommerce
+      variation_attributes: currentVariation ? [
+        ...(selectedColor ? [{ name: 'Принт', value: selectedColor }] : []),
+        ...(selectedSize ? [{ name: 'Размер', value: selectedSize }] : [])
+      ] : undefined,
+      // Add human-readable variation details
+      size: selectedSize || undefined,
+      color: selectedColor || undefined
     };
 
     try {
@@ -524,52 +788,10 @@ export const ProductPage = (): JSX.Element => {
     setExpandedSection(expandedSection === section ? null : section);
   };
 
-  // Color mapping function - using shared utility
-
-  // Compute size stock status for the currently selected color
-  // Must be before early returns to satisfy Rules of Hooks
-  const sizeStockStatus = useMemo(() => {
-    const statusMap: { [size: string]: boolean } = {};
-    if (!productVariations || productVariations.length === 0) return statusMap;
-
-    productVariations.forEach(variation => {
-      if (!variation || !Array.isArray(variation.attributes)) return;
-
-      // If product has colors, only consider variations matching selected color
-      if (allColors && allColors.length > 0) {
-        const colorMatch = variation.attributes.some(attr =>
-          attr &&
-          (attr.slug === 'pa_print' ||
-            (attr.name && attr.name.toLowerCase() === 'принт') ||
-            (attr.name && attr.name.toLowerCase() === 'color')) &&
-          attr.option === selectedColor
-        );
-        if (!colorMatch) return;
-      }
-
-      const sizeAttr = variation.attributes.find(attr =>
-        attr &&
-        (attr.slug === 'pa_size' ||
-          (attr.name && attr.name.toLowerCase() === 'размер') ||
-          (attr.name && attr.name.toLowerCase() === 'size'))
-      );
-      if (sizeAttr?.option) {
-        if (variation.stock_status === 'instock') {
-          statusMap[sizeAttr.option] = true;
-        } else if (statusMap[sizeAttr.option] === undefined) {
-          statusMap[sizeAttr.option] = false;
-        }
-      }
-    });
-    return statusMap;
-  }, [productVariations, selectedColor, allColors]);
+  // Color mapping - using shared utility from colorMap.ts
 
   if (loading) {
-    return (
-      <LoadingWrapper isContentLoading={true} showSkeleton={true}>
-        <div></div>
-      </LoadingWrapper>
-    );
+    return <ProductPageSkeleton />;
   }
 
   if (error) {
@@ -593,24 +815,22 @@ export const ProductPage = (): JSX.Element => {
   }
 
   // Extract all sizes
-  const allSizes = product.attributes?.find((attr: ProductAttribute) => 
-    attr.name.toLowerCase() === 'размер' || 
+  const allSizes = product.attributes?.find((attr: ProductAttribute) =>
+    attr.name.toLowerCase() === 'размер' ||
     attr.name.toLowerCase() === 'size' ||
     attr.slug === 'pa_size'
   )?.options || [];
 
-
   return (
-    <LoadingWrapper isContentLoading={false} showSkeleton={false}>
-      <div className="min-h-screen bg-white">
+    <div className="min-h-screen bg-white">
       <div className="w-full flex flex-col md:flex-row mt-16 md:mt-20 md:gap-12 md:px-[30px] md:max-w-7xl md:mx-auto">
         {/* Left side - Media gallery */}
         <div className="w-full md:w-2/3 flex relative">
           <div className="hidden md:flex flex-col gap-2 p-4">
             {mediaItems.map((item: MediaItem, index: number) => (
-              <button 
-                key={index} 
-                className={"relative w-[60px] h-[80px] overflow-hidden " + 
+              <button
+                key={index}
+                className={"relative w-[60px] h-[80px] overflow-hidden " +
                   (currentMediaIndex === index ? "border-2 border-black" : "")
                 }
                 onClick={() => {
@@ -619,9 +839,9 @@ export const ProductPage = (): JSX.Element => {
               >
                 {item.type === 'video' ? (
                   <>
-                    <img 
-                      src={item.thumbnail} 
-                      alt="Video thumbnail" 
+                    <img
+                      src={item.thumbnail}
+                      alt="Video thumbnail"
                       className="w-full h-full object-contain"
                       loading="lazy"
                     />
@@ -630,70 +850,81 @@ export const ProductPage = (): JSX.Element => {
                     </div>
                   </>
                 ) : (
-                  <img 
-                    src={item.url} 
-                    alt={`Thumbnail ${index + 1}`} 
-                    className="w-full h-full object-contain" 
+                  <img
+                    src={item.url}
+                    alt={`Thumbnail ${index + 1}`}
+                    className="w-full h-full object-contain"
                     loading="lazy"
                   />
                 )}
               </button>
             ))}
           </div>
-          <div className="flex-1 relative">
-            {mediaItems.length > 0 ? (
-              mediaItems[currentMediaIndex].type === 'video' ? (
-              <div className="w-full aspect-[9/16]">
-                <video
-                  src={mediaItems[currentMediaIndex].url}
-                  className="w-full h-full object-cover"
-                  autoPlay
-                  loop
-                  muted
-                  playsInline
-                />
-              </div>
-            ) : (
-              <div className="w-full h-full flex items-start justify-center">
-                <img 
-                  src={mediaItems[currentMediaIndex].url}
-                  alt="Main product" 
-                  className="max-w-full max-h-[80vh] object-contain"
-                  loading="eager"
-                />
-              </div>
-              )
-            ) : (
-              <div className="w-full h-[800px] bg-gray-100 flex items-center justify-center">
-                <p className="text-gray-500">No images available</p>
-              </div>
-            )}
-            {/* Mobile Navigation Arrows */}
-            {mediaItems.length > 1 && (
-            <div className="md:hidden absolute inset-x-0 top-1/2 -translate-y-1/2 flex justify-between items-center px-4">
-              <button 
-                onClick={prevMedia}
-                className="bg-white/80 rounded-full p-2 hover:bg-white"
-                aria-label="Previous media"
+          <div className="flex-1 relative overflow-hidden">
+            {/* Swipeable sliding track — touch + mouse drag */}
+            <div
+              className="w-full select-none cursor-grab active:cursor-grabbing"
+              onTouchStart={onGalleryTouchStart}
+              onTouchMove={onGalleryTouchMove}
+              onTouchEnd={onGalleryTouchEnd}
+              onMouseDown={onGalleryMouseDown}
+              onMouseMove={onGalleryMouseMove}
+              onMouseUp={onGalleryMouseUp}
+              onMouseLeave={onGalleryMouseUp}
+              style={{ touchAction: mediaItems.length > 1 ? 'pan-y' : 'auto' }}
+            >
+              <div
+                className="flex"
+                style={{
+                  width: `${mediaItems.length * 100}%`,
+                  transform: `translateX(calc(-${currentMediaIndex * (100 / mediaItems.length)}% + ${swipeOffset}px))`,
+                  transition: swipeDragging ? 'none' : 'transform 0.3s ease-out',
+                }}
               >
-                <ChevronLeft className="w-6 h-6" />
-              </button>
-              <button 
-                onClick={nextMedia}
-                className="bg-white/80 rounded-full p-2 hover:bg-white"
-                aria-label="Next media"
-              >
-                <ChevronRight className="w-6 h-6" />
-              </button>
+                {mediaItems.map((item: MediaItem, idx: number) => (
+                  <div
+                    key={idx}
+                    className="aspect-[3/4] flex-shrink-0 bg-gray-100"
+                    style={{ width: `${100 / mediaItems.length}%` }}
+                  >
+                    {item.type === 'video' ? (
+                      <video
+                        src={item.url}
+                        className="w-full h-full object-cover"
+                        autoPlay
+                        loop
+                        muted
+                        playsInline
+                        style={{ display: 'block' }}
+                      />
+                    ) : (
+                      <img
+                        src={item.url}
+                        alt="Product"
+                        className="w-full h-full object-cover"
+                        loading={idx === 0 ? 'eager' : 'lazy'}
+                        style={{ display: 'block' }}
+                      />
+                    )}
+                  </div>
+                ))}
+              </div>
             </div>
-            )}
-            {/* Media Counter */}
+            {/* Dot indicators (mobile) */}
             {mediaItems.length > 1 && (
-            <div className="md:hidden absolute bottom-4 right-4 bg-white/80 px-3 py-1 rounded-full">
-              <span className="text-sm font-medium">
-                {currentMediaIndex + 1} / {mediaItems.length}
-              </span>
-            </div>
+              <div className="absolute bottom-3 left-0 right-0 flex justify-center gap-1.5 pointer-events-none">
+                {mediaItems.map((_: MediaItem, idx: number) => (
+                  <span
+                    key={idx}
+                    className="block rounded-full transition-all duration-300"
+                    style={{
+                      width: idx === currentMediaIndex ? 8 : 6,
+                      height: idx === currentMediaIndex ? 8 : 6,
+                      backgroundColor: idx === currentMediaIndex ? '#000' : 'rgba(0,0,0,0.3)',
+                    }}
+                  />
+                ))}
+              </div>
             )}
           </div>
         </div>
@@ -701,7 +932,7 @@ export const ProductPage = (): JSX.Element => {
         {/* Right side - Product info */}
         <div className="w-full md:w-1/3 p-6 md:p-8">
           <div className="flex justify-between items-start">
-            <DynamicText 
+            <DynamicText
               text={product.name}
               tag="h1"
               className="font-sans text-2xl"
@@ -717,57 +948,74 @@ export const ProductPage = (): JSX.Element => {
             </button>
           </div>
 
-          <p className="font-sans mt-2 text-lg">
-                            {displayPrice ? convertAndFormatPrice(displayPrice) : 'Price not available'}
-          </p>
+          <div className="font-sans mt-2 text-lg">
+            <DiscountPrice
+              price={displayPrice || product?.price || ''}
+              regularPrice={product?.regular_price}
+              salePrice={product?.sale_price}
+              priceHtml={product?.price_html}
+            />
+          </div>
 
           {/* Color selector */}
           {allColors && allColors.length > 0 && (
             <div className="mt-8">
-                              <p className="font-sans mb-2">{t('common.selectColor')}</p>
+              <p className="font-sans mb-2">{t('common.selectColor')}</p>
               <div className="flex items-center space-x-2 mt-4">
-                {(allColors || []).map((color) => (
-                  <button
-                    key={String(color)}
-                    onClick={() => {
-                      setSelectedColor(String(color)); // Just update state, useEffect will sync URL
-                    }}
-                    className="inline-block p-0.5 border border-transparent rounded-full focus:outline-none transition-all duration-150 ease-in-out"
-                    style={selectedColor === color ? { borderColor: getColorHex(String(color)) } : {}}
-                    title={String(color)}
-                  >
-                    <span
-                      className={`block w-6 h-6 md:w-8 md:h-8 rounded-full border border-gray-300 hover:border-black`}
-                      style={{
-                        backgroundColor: getColorHex(String(color)),
-                        // Apply a ring effect if this color is selected
-                        boxShadow: selectedColor === color ? `0 0 0 2px white, 0 0 0 4px ${getColorHex(String(color))}` : 'none'
-                      }}
-                    ></span>
-                  </button>
-                ))}
-              </div>
+                {(allColors || []).map((color) => {
+                  const isInStock = colorStockStatus[color] === true; // Only show if explicitly in stock
 
+                  // Hide out-of-stock colors entirely
+                  if (!isInStock) return null;
+
+                  // Render as clickable for in-stock colors
+                  return (
+                    <button
+                      key={String(color)}
+                      onClick={() => {
+                        setSelectedColor(String(color)); // Just update state, useEffect will sync URL
+                      }}
+                      className="inline-block p-0.5 border border-transparent rounded-full focus:outline-none transition-all duration-150 ease-in-out"
+                      style={selectedColor === color ? { borderColor: getColorHex(String(color)) } : {}}
+                      title={String(color)}
+                    >
+                      <span
+                        className={`block w-6 h-6 md:w-8 md:h-8 rounded-full border border-gray-300 hover:border-black`}
+                        style={{
+                          backgroundColor: getColorHex(String(color)),
+                          // Apply a ring effect if this color is selected
+                          boxShadow: selectedColor === color ? `0 0 0 2px white, 0 0 0 4px ${getColorHex(String(color))}` : 'none'
+                        }}
+                      ></span>
+                    </button>
+                  );
+                })}
+              </div>
+              {selectedColor && (
+                <div className="mt-2 text-sm text-gray-600">{t('common.selectedColor')}: <span className="font-semibold">{selectedColor}</span></div>
+              )}
             </div>
           )}
 
           {/* Size selector */}
           <div className="mt-8">
-                            <p className="font-sans mb-2">{t('common.selectSize')}</p>
+            <p className="font-sans mb-2">{t('common.selectSize')}</p>
             <div className="flex flex-wrap gap-2">
               {allSizes.map((size: string) => {
-                const isInStock = sizeStockStatus[size] !== false;
+                // Check if this size is in stock for the selected color
+                const isSizeInStock = !selectedColor || sizeStockStatus[size] === true;
+
                 return (
                   <button
                     key={size}
-                    className={`px-4 py-2 border rounded-full text-sm font-medium transition-colors duration-150 ease-in-out focus:outline-none ${isInStock ? (
+                    className={`px-4 py-2 border rounded-full text-sm font-medium transition-colors duration-150 ease-in-out focus:outline-none ${isSizeInStock ? (
                       selectedSize === size
                         ? 'bg-black text-white border-black'
                         : 'bg-white text-gray-700 border-gray-300 hover:border-black hover:text-black focus:ring-2 focus:ring-offset-1 focus:ring-black'
                     ) : 'bg-white text-gray-300 border-gray-200 line-through cursor-not-allowed'}`}
-                    onClick={() => isInStock && setSelectedSize(size)}
-                    disabled={!isInStock}
-                    title={isInStock ? size : `${size} — out of stock`}
+                    onClick={() => isSizeInStock && setSelectedSize(size)}
+                    disabled={!isSizeInStock}
+                    title={isSizeInStock ? size : `${size} \u2014 \u043d\u0435\u0442 \u0432 \u043d\u0430\u043b\u0438\u0447\u0438\u0438`}
                   >
                     {size}
                   </button>
@@ -775,13 +1023,13 @@ export const ProductPage = (): JSX.Element => {
               })}
             </div>
             {selectedSize && (
-                              <div className="mt-2 text-sm text-gray-600">{t('common.selectedSize')}: <span className="font-semibold">{selectedSize}</span></div>
+              <div className="mt-2 text-sm text-gray-600">{t('common.selectedSize')}: <span className="font-semibold">{selectedSize}</span></div>
             )}
-            <button 
+            <button
               className="mt-2 text-sm underline"
               onClick={() => setIsSizeChartModalOpen(true)}
             >
-                              {t('footer.sizeChart')}
+              {t('footer.sizeChart')}
             </button>
           </div>
 
@@ -796,7 +1044,7 @@ export const ProductPage = (): JSX.Element => {
 
           {/* Expandable sections */}
           <div className="mt-8 space-y-4">
-            {[ 
+            {[
               { title: t('product.parameters'), contentKey: 'description' },
               { title: t('product.delivery'), contentKey: 'delivery' },
               { title: t('product.returns'), contentKey: 'returns' }
@@ -808,7 +1056,7 @@ export const ProductPage = (): JSX.Element => {
                 >
                   <span className="font-sans">{section.title}</span>
                   <ChevronDown
-                    className={'w-5 h-5 transition-transform ' + 
+                    className={'w-5 h-5 transition-transform ' +
                       (expandedSection === section.contentKey ? 'rotate-180' : '')
                     }
                   />
@@ -817,45 +1065,40 @@ export const ProductPage = (): JSX.Element => {
                   <div className="font-sans pb-4">
                     {section.contentKey === 'description' ? (
                       product.short_description ? (
-                        <TranslatedHTML htmlContent={product.short_description} />
+                        <div dangerouslySetInnerHTML={{ __html: product.short_description }} />
                       ) : product.description ? (
-                        <TranslatedHTML htmlContent={product.description} />
+                        <div dangerouslySetInnerHTML={{ __html: product.description }} />
                       ) : (
                         t('product.noDescription')
                       )
                     ) : section.contentKey === 'delivery' ? (
-                      <div className="space-y-2 text-sm">
-                        <p>Worldwide shipping (7-14 business days)</p>
+                      <div>
+                        <p><strong>{t('delivery.moscowTitle')}</strong></p>
+                        <p><strong>{t('delivery.cdekTitle')}</strong></p>
+                        <p>{t('delivery.cdekDescription')}</p>
+                        <p><strong>{t('delivery.courierTitle')}</strong></p>
+                        <p>{t('delivery.withinMKAD')}</p>
+                        <p>{t('delivery.outsideMKAD')}</p>
+                        <br />
+                        <p><strong>СДЭК РФ</strong></p>
+                        <p>Доставка СДЭК по всей России.</p>
+                        <p>Стоимость доставки рассчитывается согласно тарифам компании СДЭК. Срок доставки (без учета времени на формирование заказа) зависит от адреса получателя</p>
+                        <br />
+                        <p>{t('delivery.international')}</p>
+                        <br />
+                        <p>{t('delivery.byPhone')}</p>
+                        <p>{t('delivery.byEmail')}</p>
                       </div>
                     ) : section.contentKey === 'returns' ? (
-                      <div className="space-y-4 text-sm">
-                        <div>
-                          <p className="font-semibold mb-2">Returns:</p>
-                          <p className="mb-3">We accept returns within 14 days, starting from the day your order was delivered.</p>
-                          <p className="mb-3">Kindly contact our customer service to program your return via email <a href="mailto:info@leahcation.com" className="text-blue-600 underline">info@leahcation.com</a> or by WhatsApp <a href="https://wa.me/33640613269" className="text-blue-600 underline">+33640613269</a> and we will assist you with your order return.</p>
-                        </div>
-                        
-                        <div>
-                          <p className="font-semibold mb-2">Returned items must comply with our returns policy:</p>
-                          <ul className="list-disc list-inside space-y-1 ml-2">
-                            <li>Items must be returned unworn, undamaged and unused, with all tags attached and the original packaging included</li>
-                            <li>Final sale items cannot be returned unless the item arrives damaged or faulty when delivered to you</li>
-                            <li>Footwear and accessories must be returned with the original branded boxes and dust bags, where provided, and placed inside a protective box when returned</li>
-                            <li>When trying on footwear, please do not mark the soles or damage the shoe box</li>
-                            <li>If an item has a security tag or brand tag attached, it must be returned with the tag in its original position</li>
-                            <li>Beauty and cosmetic products must be returned unopened and unused, with the seals of any packaging still intact</li>
-                            <li>Swimwear items must be returned with the hygiene seals attached and in unopened and undamaged packaging, where applicable</li>
-                            <li>Swimwear must only be tried on over your own undergarments. We will not accept any returns that have been worn or are soiled.</li>
-                            <li>Made-to-order items cannot be returned as they have been created to your specification, unless the item arrives damaged or faulty when delivered to you</li>
-                          </ul>
-                        </div>
-                        
-                        <p className="italic">Please be careful when trying on your purchases and return them in the same condition you received them. Any returns that do not meet our policy will not be accepted.</p>
-                        
-                        <div>
-                          <p className="font-semibold mb-2">Refunds:</p>
-                          <p>Once your return has been received, it can take up to 6 calendar days to process. When your return has been accepted, your refund will be processed to your original payment method, excluding any delivery costs. Refunds can take up to 14 days to show in your account, depending on your payment provider.</p>
-                        </div>
+                      <div>
+                        <p>{t('returns.conditions')}</p>
+                        <br />
+                        <p>{t('returns.toArrange')}</p>
+                        <br />
+                        <p>{t('returns.byPhone')}</p>
+                        <p>{t('returns.byEmail')}</p>
+                        <br />
+                        <p>{t('returns.law')}</p>
                       </div>
                     ) : (
                       'Lorem ipsum dolor sit amet, consectetur adipiscing elit. Sed do eiusmod tempor incididunt ut labore et dolore magna aliqua.'
@@ -868,12 +1111,16 @@ export const ProductPage = (): JSX.Element => {
         </div>
       </div>
 
+      {/* Wrapper for Related Products Slider to align with page content */}
+      <div ref={relatedProductsRef} className="w-full md:max-w-7xl md:mx-auto md:px-[30px] mb-8">
+        <RelatedProductsSlider products={relatedProducts} loading={loadingRelated} title="Вам также может понравиться" />
+      </div>
+
       {/* Size Chart Modal */}
-      <SizeChartModal 
-        isOpen={isSizeChartModalOpen} 
-        onClose={() => setIsSizeChartModalOpen(false)} 
+      <SizeChartModal
+        isOpen={isSizeChartModalOpen}
+        onClose={() => setIsSizeChartModalOpen(false)}
       />
     </div>
-    </LoadingWrapper>
   );
 };

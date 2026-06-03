@@ -10,12 +10,11 @@ import { DiscountPrice } from '../components/DiscountPrice';
 import { DynamicText } from '../components/DynamicText';
 import { useTranslation } from '../context/TranslationContext';
 import { apiEndpoints } from '../utils/apiConfig';
-import { getColorHex, sortSizes, slugifyColor } from '../utils/colorMap';
-import { isProductHidden } from '../utils/hiddenProducts';
 import { getActualPrice } from '../utils/priceHelpers';
-import { convertAndFormatPrice } from '../utils/priceUtils';
 import { savePageNumber, getPageNumber, clearPageNumber } from '../components/ScrollToTop';
 import ProductImageCarousel from '../components/ProductImageCarousel';
+import { getColorHex, sortSizes, slugifyColor } from '../utils/colorMap';
+import { isProductHidden } from '../utils/hiddenProducts';
 
 // Navigation items
 const navItems = [
@@ -126,12 +125,9 @@ export const CataloguePage = (): JSX.Element => {
   const { categorySlug: categorySlugFromPath } = useParams<{ categorySlug?: string }>();
   const [sortOrder, setSortOrder] = useState<string>('');
 
-  // WooCommerce API credentials
-  const WC_CONSUMER_KEY = 'ck_084aa13e23a1accc48bc43802ffe9757f01005b4';
-  const WC_CONSUMER_SECRET = 'cs_5001dac555fade564eeb29c4d95fb49ea973d6f5';
-  const WC_API_URL = 'https://leahcation.ru/wp/wp-json/wc/v3';
 
-  // Color mapping - using shared utility from colorMap.ts
+
+  // Color mapping - using shared utility from colorMap.ts (imported at top of file)
 
   // Use the complete filter options fetched separately
   const allSizes = allAvailableSizes;
@@ -525,9 +521,6 @@ export const CataloguePage = (): JSX.Element => {
 
         // 2. Identify variable products and fetch their detailed variations
         const variationPromises = baseProducts.map(async (product) => {
-          // Skip hidden products
-          if (isProductHidden(product.id)) return;
-
           // Ensure product.images is an array, default to empty if not
           const productImages = Array.isArray(product.images) ? product.images : [];
 
@@ -652,21 +645,56 @@ export const CataloguePage = (): JSX.Element => {
                         status: product.status,
                         categories: product.categories,
                         originalImages: (() => {
-                          // Build enriched gallery: variation main image + variation_gallery URLs
-                          const gallerySet = new Set<string>();
-                          // 1. Add representative variation's main image
-                          if (representativeVariation.image?.src) gallerySet.add(representativeVariation.image.src);
-                          // 2. Add variation-specific gallery images (variation_gallery.urls)
+                          // Extract ALL video URLs from variation description
+                          const videoUrls: string[] = [];
+                          const seenVideoUrls = new Set<string>();
+                          const desc = (representativeVariation as any).description;
+                          if (desc && typeof desc === 'string') {
+                            const urlMatches = [...desc.matchAll(/(https?:\/\/[^\s,"'<>]+\.(?:mp4|webm)(?:[^\s,"'<>]*)?)/gi)];
+                            urlMatches.forEach((m: RegExpMatchArray) => {
+                              const clean = m[1].split('?')[0];
+                              if (clean && !seenVideoUrls.has(clean)) { seenVideoUrls.add(clean); videoUrls.push(clean); }
+                            });
+                            if (videoUrls.length === 0) {
+                              const tagMatches = [...desc.matchAll(/<(?:source|video)[^>]+src=["'](.*?)["']/gi)];
+                              tagMatches.forEach((m: RegExpMatchArray) => {
+                                const clean = m[1].split('?')[0];
+                                if (clean && !seenVideoUrls.has(clean)) { seenVideoUrls.add(clean); videoUrls.push(clean); }
+                              });
+                            }
+                          }
+                          // Build interleaved gallery: image, video, image, video...
+                          const imageItems: Array<{ src: string; type: 'image' }> = [];
+                          const seenSrcs = new Set<string>();
+                          if (representativeVariation.image?.src) {
+                            imageItems.push({ src: representativeVariation.image.src, type: 'image' });
+                            seenSrcs.add(representativeVariation.image.src);
+                          }
                           const varGallery = (representativeVariation as any).variation_gallery;
-                          if (varGallery && varGallery.urls && varGallery.urls.length > 0) {
-                            varGallery.urls.forEach((url: string) => { if (url) gallerySet.add(url); });
+                          if (varGallery?.urls?.length > 0) {
+                            varGallery.urls.forEach((url: string) => {
+                              if (url && !seenSrcs.has(url)) {
+                                imageItems.push({ src: url, type: 'image' });
+                                seenSrcs.add(url);
+                              }
+                            });
                           }
-                          // 3. Fallback: parent images + other variation images
-                          if (gallerySet.size < 2) {
-                            productImages.forEach(img => { if (img.src) gallerySet.add(img.src); });
-                            variationsInGroup.forEach(v => { if (v.image?.src) gallerySet.add(v.image.src); });
+                          if (imageItems.length < 2) {
+                            productImages.forEach((img: { src: string }) => {
+                              if (img.src && !seenSrcs.has(img.src)) {
+                                imageItems.push({ src: img.src, type: 'image' });
+                                seenSrcs.add(img.src);
+                              }
+                            });
                           }
-                          return Array.from(gallerySet).map(src => ({ src }));
+                          const result: Array<{ src: string; type: 'image' | 'video' }> = [];
+                          let ii = 0; let vi = 0;
+                          const max = Math.max(imageItems.length, videoUrls.length * 2);
+                          for (let i = 0; i < max && (ii < imageItems.length || vi < videoUrls.length); i++) {
+                            if (ii < imageItems.length) result.push(imageItems[ii++]);
+                            if (vi < videoUrls.length) result.push({ src: videoUrls[vi++], type: 'video' });
+                          }
+                          return result.length > 0 ? result : [{ src: representativeVariation.image?.src || '/placeholder.png', type: 'image' as const }];
                         })(),
                       });
                     });
@@ -768,7 +796,7 @@ export const CataloguePage = (): JSX.Element => {
         console.log('Processed Displayable Products before setting state:', processedDisplayableProducts);
 
         // Ensure products are valid before setting
-        const validDisplayableProducts = processedDisplayableProducts.filter(p => p && p.name && p.price && p.status === 'publish');
+        const validDisplayableProducts = processedDisplayableProducts.filter(p => p && p.name && p.price && p.status === 'publish' && !isProductHidden(p.parentId)); // EN-only: exclude hidden products
 
         setDisplayableProducts(validDisplayableProducts);
 
@@ -795,7 +823,7 @@ export const CataloguePage = (): JSX.Element => {
       fetchProductsAndVariations(); // Or handle error: setError("Invalid category specified in URL"); setLoading(false);
     }
 
-  }, [selectedCategory, categories, categorySlugFromPath, currentPage, WC_API_URL, WC_CONSUMER_KEY, WC_CONSUMER_SECRET]); // Updated dependencies
+  }, [selectedCategory, categories, categorySlugFromPath, currentPage]); // Updated dependencies
 
   // Close dropdown on click outside
   useEffect(() => {
@@ -810,9 +838,9 @@ export const CataloguePage = (): JSX.Element => {
 
   // Category data for the top section
   const categoriesData = [
-    { name: "Sets", image: "/Sets.png" },
-    { name: "Separates", image: "/Separates.png" },
-    { name: "One-piece", image: "/onepiece.png" },
+    { name: "Сеты", image: "/Sets.png" },
+    { name: "Раздельные", image: "/Separates.png" },
+    { name: "Слитые", image: "/onepiece.png" },
   ];
 
 
@@ -1168,7 +1196,7 @@ export const CataloguePage = (): JSX.Element => {
                   </button>
                 </div>
                 <div className="px-4 pb-4 flex flex-col h-full">
-                  <span className="text-base font-bold uppercase mb-2">Filters</span>
+                  <span className="text-base font-bold uppercase mb-2">Фильтры</span>
                   <div className="w-full h-px bg-gray-200 mb-2" />
                   <SelectedFiltersDisplay
                     selectedSize={selectedSize}
@@ -1205,7 +1233,7 @@ export const CataloguePage = (): JSX.Element => {
                     {/* Colour Dropdown */}
                     <div>
                       <button className="w-full flex justify-between items-center py-2 font-bold uppercase text-xs border-b border-gray-100" onClick={() => setMobileFilterDropdown(mobileFilterDropdown === 'color' ? null : 'color')}>
-                        {t('common.color')}
+                        {t('common.color')}{selectedColor ? ` (${selectedColor})` : ''}
                         <ChevronDown className={`ml-2 w-4 h-4 transition-transform ${mobileFilterDropdown === 'color' ? 'rotate-180' : ''}`} />
                       </button>
                       {mobileFilterDropdown === 'color' && (
@@ -1252,7 +1280,7 @@ export const CataloguePage = (): JSX.Element => {
                     className="mt-6 w-full bg-black text-white py-3 font-bold uppercase tracking-wider text-xs rounded"
                     onClick={() => setIsFilterDrawerOpen(false)}
                   >
-                    Show Results
+                    Показать результаты
                   </button>
                   <button
                     className="mt-2 w-full text-center text-black underline text-xs"
@@ -1310,6 +1338,7 @@ export const CataloguePage = (): JSX.Element => {
                           <ProductImageCarousel
                             product={product}
                             productLink={productLink}
+                            allowVideo={idx % 2 === 1}
                           />
                           {/* Product Info */}
                           <div className="mt-2 pl-2 pr-2 pb-2 md:pl-3 md:pr-3 md:pb-3">
@@ -1406,7 +1435,7 @@ export const CataloguePage = (): JSX.Element => {
                                     <span
                                       key={idx}
                                       className="px-1.5 py-0.5 text-[10px] border rounded border-gray-200 bg-white text-gray-300 line-through cursor-not-allowed"
-                                      title={`${size} \u2014 out of stock`}
+                                      title={`${size} \u2014 \u043d\u0435\u0442 \u0432 \u043d\u0430\u043b\u0438\u0447\u0438\u0438`}
                                     >
                                       {size}
                                     </span>
@@ -1530,7 +1559,7 @@ export const CataloguePage = (): JSX.Element => {
                             <Heart className="w-5 h-5" style={{ fill: 'black', stroke: 'black' }} />
                           </button>
                         </div>
-                        <span className="text-xs text-gray-600">{cachedProduct.price ? convertAndFormatPrice(cachedProduct.price) : 'Price not available'}</span>
+                        <span className="text-xs text-gray-600">{cachedProduct.price ? `₽${cachedProduct.price}` : 'Price not available'}</span>
                       </div>
                     </div>
                     {id !== likedProducts[likedProducts.length - 1] && <div className="w-full h-px bg-gray-200 my-1" />}

@@ -12,6 +12,7 @@ export const HIDDEN_PRODUCT_IDS: Set<number> = new Set([
   113848,
   113841,
   113843,
+  113849, // Шляпа Томми (hat) — hidden on EN only
 ]);
 
 /**

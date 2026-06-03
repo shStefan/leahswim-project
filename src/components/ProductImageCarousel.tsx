@@ -1,13 +1,18 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 
+interface GalleryItem {
+    src: string;
+    type?: 'image' | 'video';
+}
+
 interface CarouselProduct {
     parentId: number;
     variationId?: number;
     name: string;
     imageSrc: string;
     selectedColorOption: string;
-    originalImages?: Array<{ src: string }>;
+    originalImages?: Array<GalleryItem>;
     isVideo?: boolean;
     // pass-through for navigation state
     [key: string]: any;
@@ -16,75 +21,90 @@ interface CarouselProduct {
 interface ProductImageCarouselProps {
     product: CarouselProduct;
     productLink: string;
+    /** When false, video slides are hidden (every-other card in catalogue for performance) */
+    allowVideo?: boolean;
 }
 
-const ProductImageCarousel = ({ product, productLink }: ProductImageCarouselProps) => {
+const ProductImageCarousel = ({ product, productLink, allowVideo = true }: ProductImageCarouselProps) => {
     const navigate = useNavigate();
-
-    console.log(`🔵🔵🔵 [CAROUSEL RENDER] Product ${product.parentId} "${product.name}" | imageSrc: ${product.imageSrc?.substring(0, 50)}... | originalImages: ${product.originalImages?.length || 0}`);
 
     // Convert full-size WooCommerce URL to a smaller thumbnail for catalogue cards
     // Only transforms -scaled images (guaranteed to have square thumbnails)
-    // Non-scaled originals are left as-is since their thumbnail sizes vary
     const toThumbnail = useCallback((src: string, size = '768x768'): string => {
         if (!src || src === '/placeholder.png') return src;
-        // Already a thumbnail?
         if (/-\d+x\d+\.(jpg|jpeg|png|webp)$/i.test(src)) return src;
-        // Only -scaled.jpg → -SIZExSIZE.jpg (these always have square thumbs)
         if (/-scaled\.(jpg|jpeg|png|webp)$/i.test(src)) {
             return src.replace(/-scaled\./, `-${size}.`);
         }
-        // Non-scaled originals: leave as-is (thumbnail sizes unpredictable)
         return src;
     }, []);
 
     // Extract the base identifier from a WP image URL (strips size suffix and extension)
-    // e.g., "...uploads/image_1c/folder/abc123_def456-768x768.jpg" → "abc123_def456"
     const getImageBase = useCallback((src: string): string => {
         const filename = src.split('/').pop() || src;
-        // Remove extension and any size/scaled suffix
         return filename.replace(/-(scaled|\d+x\d+)\.(jpg|jpeg|png|webp)$/i, '').replace(/\.(jpg|jpeg|png|webp)$/i, '');
     }, []);
 
-    // Build gallery: variation image first, then fill from originalImages (up to 3 total)
-    const galleryImages = useMemo(() => {
-        const images: string[] = [];
-        const seenBases = new Set<string>(); // Track base hashes to avoid visually-identical images
+    const isVideoUrl = (src: string) => /\.(mp4|webm)(\?.*)?$/i.test(src);
 
-        // Start with the main variation/product image
-        if (product.imageSrc && product.imageSrc !== '/placeholder.png') {
-            const thumb = toThumbnail(product.imageSrc);
-            images.push(thumb);
-            seenBases.add(getImageBase(product.imageSrc));
-        }
+    // Build gallery slides: mix of image and video items
+    const gallerySlides = useMemo(() => {
+        const slides: GalleryItem[] = [];
+        const seenBases = new Set<string>();
 
-        // Add additional images from the parent product gallery
-        const origCount = product.originalImages?.length || 0;
-        let addedFromGallery = 0;
+        // Helper to add an image slide (deduped by base hash)
+        const addImage = (src: string) => {
+            if (!src || src === '/placeholder.png') return;
+            const base = getImageBase(src);
+            if (seenBases.has(base)) return;
+            seenBases.add(base);
+            slides.push({ src: toThumbnail(src), type: 'image' });
+        };
+
+        // Helper to add a video slide
+        const addVideo = (src: string) => {
+            if (!src || seenBases.has(src)) return;
+            seenBases.add(src);
+            slides.push({ src, type: 'video' });
+        };
+
+        // Build from originalImages which already has the correct order (images + videos mixed)
         if (product.originalImages && product.originalImages.length > 0) {
-            for (const img of product.originalImages) {
-                if (!img.src || images.length >= 3) continue;
-                const base = getImageBase(img.src);
-                if (seenBases.has(base)) continue; // Skip same base image (different size suffix)
-                seenBases.add(base);
-                images.push(toThumbnail(img.src));
-                addedFromGallery++;
+            for (const item of product.originalImages) {
+                if (!item.src) continue;
+                if (item.type === 'video' || isVideoUrl(item.src)) {
+                    if (allowVideo) addVideo(item.src);
+                    // if allowVideo=false, skip video slides entirely
+                } else {
+                    addImage(item.src);
+                }
             }
         }
 
-        const result = images.length > 0 ? images : ['/placeholder.png'];
-
-        // ONE-LINE summary log for each product
-        if (result.length > 1) {
-            console.log(`✅ [Carousel] Product ${product.parentId} "${product.name}" → ${result.length} images (swipeable! 🖐️). Parent gallery: ${origCount} imgs, added ${addedFromGallery} extra.`);
-        } else {
-            console.log(`⚠️ [Carousel] Product ${product.parentId} "${product.name}" → ONLY 1 image (no swipe). Parent gallery has ${origCount} image(s), none different from main.`);
+        // If nothing from originalImages, fall back to imageSrc
+        if (slides.filter(s => s.type !== 'video').length === 0 && product.imageSrc && product.imageSrc !== '/placeholder.png') {
+            if (isVideoUrl(product.imageSrc)) {
+                if (allowVideo) addVideo(product.imageSrc);
+            } else {
+                addImage(product.imageSrc);
+            }
         }
 
-        return result;
-    }, [product.imageSrc, product.originalImages, product.parentId, product.name, toThumbnail, getImageBase]);
+        // For video-eligible cards: move first video to position 0 so it autoplays immediately
+        if (allowVideo) {
+            const firstVideoIdx = slides.findIndex(s => s.type === 'video');
+            if (firstVideoIdx > 0) {
+                const [videoSlide] = slides.splice(firstVideoIdx, 1);
+                slides.unshift(videoSlide);
+            }
+        }
 
-    const hasMultiple = galleryImages.length > 1;
+        // Limit to 3 slides max for fast loading in catalogue cards
+        const capped = slides.slice(0, 3);
+        return capped.length > 0 ? capped : [{ src: '/placeholder.png', type: 'image' as const }];
+    }, [product.imageSrc, product.originalImages, product.parentId, allowVideo, toThumbnail, getImageBase]);
+
+    const hasMultiple = gallerySlides.length > 1;
     const [currentIndex, setCurrentIndex] = useState(0);
     const [isDragging, setIsDragging] = useState(false);
     const [dragOffset, setDragOffset] = useState(0);
@@ -105,8 +125,7 @@ const ProductImageCarousel = ({ product, productLink }: ProductImageCarouselProp
         didSwipeRef.current = false;
         setIsDragging(true);
         setDragOffset(0);
-        console.log(`👆 [Carousel] Drag START at x=${clientX}, product=${product.parentId}, hasMultiple=${hasMultiple}`);
-    }, [product.parentId, hasMultiple]);
+    }, []);
 
     const handleMove = useCallback((clientX: number) => {
         currentXRef.current = clientX;
@@ -120,27 +139,17 @@ const ProductImageCarousel = ({ product, productLink }: ProductImageCarouselProp
     const handleEnd = useCallback(() => {
         const diff = currentXRef.current - startXRef.current;
 
-        console.log(`👆 [Carousel] Drag END: diff=${diff}px, threshold=${SWIPE_THRESHOLD}, hasMultiple=${hasMultiple}, currentIndex=${currentIndex}, maxIndex=${galleryImages.length - 1}`);
-
         if (Math.abs(diff) > SWIPE_THRESHOLD && hasMultiple) {
-            if (diff < 0 && currentIndex < galleryImages.length - 1) {
-                const newIdx = currentIndex + 1;
-                console.log(`➡️ [Carousel] Swiping to NEXT image: ${currentIndex} → ${newIdx}`);
-                setCurrentIndex(newIdx);
+            if (diff < 0 && currentIndex < gallerySlides.length - 1) {
+                setCurrentIndex(currentIndex + 1);
             } else if (diff > 0 && currentIndex > 0) {
-                const newIdx = currentIndex - 1;
-                console.log(`⬅️ [Carousel] Swiping to PREV image: ${currentIndex} → ${newIdx}`);
-                setCurrentIndex(newIdx);
-            } else {
-                console.log(`🚫 [Carousel] Swipe blocked - at boundary (index=${currentIndex}, max=${galleryImages.length - 1})`);
+                setCurrentIndex(currentIndex - 1);
             }
-        } else if (Math.abs(diff) <= SWIPE_THRESHOLD) {
-            console.log(`🔘 [Carousel] Drag too short (${Math.abs(diff)}px < ${SWIPE_THRESHOLD}px), treating as tap`);
         }
 
         setIsDragging(false);
         setDragOffset(0);
-    }, [currentIndex, galleryImages.length, hasMultiple]);
+    }, [currentIndex, gallerySlides.length, hasMultiple]);
 
     // Touch handlers
     const onTouchStart = useCallback((e: React.TouchEvent) => {
@@ -159,13 +168,13 @@ const ProductImageCarousel = ({ product, productLink }: ProductImageCarouselProp
 
     // Mouse handlers
     const onMouseDown = useCallback((e: React.MouseEvent) => {
-        if (e.button !== 0) return; // left click only
+        if (e.button !== 0) return;
         handleStart(e.clientX);
     }, [handleStart]);
 
     const onMouseMove = useCallback((e: React.MouseEvent) => {
         if (!isDragging) return;
-        e.preventDefault(); // prevent text selection during drag
+        e.preventDefault();
         handleMove(e.clientX);
     }, [isDragging, handleMove]);
 
@@ -175,28 +184,21 @@ const ProductImageCarousel = ({ product, productLink }: ProductImageCarouselProp
     }, [isDragging, handleEnd]);
 
     const onMouseLeave = useCallback(() => {
-        if (isDragging) {
-            handleEnd();
-        }
+        if (isDragging) handleEnd();
     }, [isDragging, handleEnd]);
 
     // Click: navigate only if user didn't swipe
     const handleClick = useCallback((e: React.MouseEvent) => {
         if (didSwipeRef.current) {
-            console.log(`🚫 [Carousel] Click suppressed (user swiped)`);
             e.preventDefault();
             e.stopPropagation();
             return;
         }
-        console.log(`🔗 [Carousel] Navigating to ${productLink}`);
         e.preventDefault();
         navigate(productLink, {
             state: { parentProductId: product.parentId, selectedColor: product.selectedColorOption, productData: product }
         });
     }, [navigate, productLink, product]);
-
-    // Determine if the first image is a video
-    const isFirstVideo = product.isVideo && galleryImages[0]?.match?.(/\.(mp4|webm)$/i);
 
     return (
         <div
@@ -214,63 +216,57 @@ const ProductImageCarousel = ({ product, productLink }: ProductImageCarouselProp
                 cursor: hasMultiple ? (isDragging ? 'grabbing' : 'grab') : 'pointer',
             }}
         >
-            {/* Images track */}
+            {/* Slides track */}
             <div
                 className="flex h-full"
                 style={{
-                    width: `${galleryImages.length * 100}%`,
-                    transform: `translateX(calc(-${currentIndex * (100 / galleryImages.length)}% + ${dragOffset}px))`,
+                    width: `${gallerySlides.length * 100}%`,
+                    transform: `translateX(calc(-${currentIndex * (100 / gallerySlides.length)}% + ${dragOffset}px))`,
                     transition: isDragging ? 'none' : 'transform 0.3s ease-out',
                 }}
             >
-                {galleryImages.map((src, idx) => {
-                    const isVideo = idx === 0 && isFirstVideo;
-                    return (
-                        <div
-                            key={`${product.parentId}-${idx}-${src}`}
-                            className="h-full flex-shrink-0"
-                            style={{ width: `${100 / galleryImages.length}%` }}
-                        >
-                            {isVideo ? (
-                                <video
-                                    src={src}
-                                    autoPlay
-                                    loop
-                                    muted
-                                    playsInline
-                                    className="w-full h-full object-cover pointer-events-none"
-                                    style={{ display: 'block' }}
-                                />
-                            ) : (
-                                <img
-                                    src={src}
-                                    alt={`${product.name} ${idx + 1}`}
-                                    className="w-full h-full object-cover pointer-events-none"
-                                    style={{ display: 'block' }}
-                                    loading={idx === 0 ? 'eager' : 'lazy'}
-                                    width="300"
-                                    height="400"
-                                    decoding="async"
-                                    draggable={false}
-                                    onError={(e) => {
-                                        const img = e.target as HTMLImageElement;
-                                        const current = img.src;
-                                        // Fallback chain: thumbnail → original (no suffix) → placeholder
-                                        if (/-\d+x\d+\.(jpg|jpeg|png|webp)$/i.test(current)) {
-                                            // Try original without size suffix
-                                            img.src = current.replace(/-\d+x\d+\./, '.');
-                                        } else if (/-scaled\.(jpg|jpeg|png|webp)$/i.test(current)) {
-                                            // Try without -scaled
-                                            img.src = current.replace(/-scaled\./, '.');
-                                        } else {
-                                            img.src = '/placeholder.png';
-                                        }
-                                    }}
-                                />
-                            )}
-                        </div>
-                    );
-                })}
+                {gallerySlides.map((slide, idx) => (
+                    <div
+                        key={`${product.parentId}-${idx}-${slide.src}`}
+                        className="h-full flex-shrink-0"
+                        style={{ width: `${100 / gallerySlides.length}%` }}
+                    >
+                        {slide.type === 'video' ? (
+                            <video
+                                src={slide.src}
+                                autoPlay
+                                loop
+                                muted
+                                playsInline
+                                className="w-full h-full object-cover pointer-events-none"
+                                style={{ display: 'block' }}
+                            />
+                        ) : (
+                            <img
+                                src={slide.src}
+                                alt={`${product.name} ${idx + 1}`}
+                                className="w-full h-full object-cover pointer-events-none"
+                                style={{ display: 'block' }}
+                                loading={idx === 0 ? 'eager' : 'lazy'}
+                                width="300"
+                                height="400"
+                                decoding="async"
+                                draggable={false}
+                                onError={(e) => {
+                                    const img = e.target as HTMLImageElement;
+                                    const current = img.src;
+                                    if (/-\d+x\d+\.(jpg|jpeg|png|webp)$/i.test(current)) {
+                                        img.src = current.replace(/-\d+x\d+\./, '.');
+                                    } else if (/-scaled\.(jpg|jpeg|png|webp)$/i.test(current)) {
+                                        img.src = current.replace(/-scaled\./, '.');
+                                    } else {
+                                        img.src = '/placeholder.png';
+                                    }
+                                }}
+                            />
+                        )}
+                    </div>
+                ))}
             </div>
 
             {/* Left/Right Arrow Controls */}
@@ -293,7 +289,7 @@ const ProductImageCarousel = ({ product, productLink }: ProductImageCarouselProp
                     </button>
                     <button
                         className="pointer-events-auto bg-white/70 hover:bg-white/90 rounded-full p-1 shadow-sm transition-all duration-150"
-                        style={{ visibility: currentIndex < galleryImages.length - 1 ? 'visible' : 'hidden' }}
+                        style={{ visibility: currentIndex < gallerySlides.length - 1 ? 'visible' : 'hidden' }}
                         onClick={(e) => {
                             e.stopPropagation();
                             e.preventDefault();
@@ -312,14 +308,16 @@ const ProductImageCarousel = ({ product, productLink }: ProductImageCarouselProp
             {/* Dot indicators */}
             {hasMultiple && (
                 <div className="absolute bottom-2 left-0 right-0 flex justify-center items-center gap-1.5 z-10 pointer-events-none">
-                    {galleryImages.map((_, idx) => (
+                    {gallerySlides.map((slide, idx) => (
                         <span
                             key={idx}
                             className="block rounded-full transition-all duration-300"
                             style={{
                                 width: idx === currentIndex ? 8 : 6,
                                 height: idx === currentIndex ? 8 : 6,
-                                backgroundColor: idx === currentIndex ? '#fff' : 'rgba(255,255,255,0.5)',
+                                backgroundColor: slide.type === 'video'
+                                    ? (idx === currentIndex ? '#fff' : 'rgba(255,255,255,0.6)')
+                                    : (idx === currentIndex ? '#fff' : 'rgba(255,255,255,0.5)'),
                                 boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
                             }}
                         />

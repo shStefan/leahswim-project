@@ -1,7 +1,6 @@
-// API configuration utility to handle development vs production
-const WC_CONSUMER_KEY = 'ck_084aa13e23a1accc48bc43802ffe9757f01005b4';
-const WC_CONSUMER_SECRET = 'cs_5001dac555fade564eeb29c4d95fb49ea973d6f5';
-const WC_API_URL = 'https://leahcation.ru/wp/wp-json/wc/v3';
+// API configuration — keys are NEVER in the browser bundle.
+// EN (Vercel): all WC calls go through /api/wc?path=...&<params>
+// The serverless function adds the Authorization header server-side.
 
 const isDevelopment = import.meta.env.DEV;
 
@@ -11,122 +10,51 @@ const getDailyCacheBuster = (): string => {
   return `${now.getFullYear()}${String(now.getMonth() + 1).padStart(2, '0')}${String(now.getDate()).padStart(2, '0')}`;
 };
 
-// Helper function to create authorization header
-const getAuthHeaders = () => ({
-  'Authorization': 'Basic ' + btoa(WC_CONSUMER_KEY + ':' + WC_CONSUMER_SECRET),
-  'Accept': 'application/json',
-  'Content-Type': 'application/json',
-});
+// In development Vite proxy handles /wp-json → leahcation.ru with auth headers.
+// In production all calls go through the Vercel /api/wc serverless proxy.
+const wcUrl = (path: string, params: string): { url: string; options: RequestInit } => {
+  const cb = getDailyCacheBuster();
+  const fullParams = params ? `${params}&cb=${cb}` : `cb=${cb}`;
 
-// API endpoint functions
+  if (isDevelopment) {
+    return {
+      url: `/wp-json/wc/v3/${path}?${fullParams}`,
+      options: { headers: { 'Accept': 'application/json' } },
+    };
+  }
+
+  return {
+    url: `/api/wc?path=${encodeURIComponent(path)}&${fullParams}`,
+    options: { headers: { 'Accept': 'application/json' } },
+  };
+};
+
 export const apiEndpoints = {
-  // Products endpoint
-  products: (params: string = '') => {
-    const cb = getDailyCacheBuster();
-    const allParams = params ? `${params}&cb=${cb}` : `cb=${cb}`;
-    if (isDevelopment) {
-      return {
-        url: `/wp-json/wc/v3/products?${allParams}`,
-        options: { headers: getAuthHeaders() }
-      };
-    }
-    return {
-      url: `${WC_API_URL}/products?${allParams}`,
-      options: { headers: getAuthHeaders() }
-    };
-  },
+  products: (params: string = '') => wcUrl('products', params),
 
-  // Categories endpoint  
-  categories: (params: string = '') => {
-    const cb = getDailyCacheBuster();
-    const allParams = params ? `${params}&cb=${cb}` : `cb=${cb}`;
-    if (isDevelopment) {
-      return {
-        url: `/wp-json/wc/v3/products/categories?${allParams}`,
-        options: { headers: getAuthHeaders() }
-      };
-    }
-    return {
-      url: `${WC_API_URL}/products/categories?${allParams}`,
-      options: { headers: getAuthHeaders() }
-    };
-  },
+  categories: (params: string = '') => wcUrl('products/categories', params),
 
-  // Variations endpoint
-  variations: (productId: string, params: string = '') => {
-    const cb = getDailyCacheBuster();
-    const allParams = params ? `${params}&cb=${cb}` : `cb=${cb}`;
-    if (isDevelopment) {
-      return {
-        url: `/wp-json/wc/v3/products/${productId}/variations?${allParams}`,
-        options: { headers: getAuthHeaders() }
-      };
-    }
-    return {
-      url: `${WC_API_URL}/products/${productId}/variations?${allParams}`,
-      options: { headers: getAuthHeaders() }
-    };
-  },
+  variations: (productId: string, params: string = '') =>
+    wcUrl(`products/${productId}/variations`, params),
 
-  // Orders endpoint
   orders: () => {
     if (isDevelopment) {
-      // Use Vite proxy in development
       return {
         url: '/wp-json/wc/v3/orders',
-        options: {
-          headers: {
-            ...getAuthHeaders(),
-            'Content-Type': 'application/json'
-          }
-        }
-      };
-    }
-    // In production, call WooCommerce API directly
-    return {
-      url: `${WC_API_URL}/orders`,
-      options: {
-        headers: {
-          ...getAuthHeaders(),
-          'Content-Type': 'application/json'
-        }
-      }
-    };
-  },
-
-  // Attributes endpoint
-  attributes: (params: string = '') => {
-    const cb = getDailyCacheBuster();
-    const allParams = params ? `${params}&cb=${cb}` : `cb=${cb}`;
-    if (isDevelopment) {
-      return {
-        url: `/wp-json/wc/v3/products/attributes?${allParams}`,
-        options: { headers: getAuthHeaders() }
+        options: { headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' } },
       };
     }
     return {
-      url: `${WC_API_URL}/products/attributes?${allParams}`,
-      options: { headers: getAuthHeaders() }
+      url: '/api/wc?path=orders',
+      options: { headers: { 'Accept': 'application/json', 'Content-Type': 'application/json' } },
     };
   },
 
-  // Attribute terms endpoint
-  attributeTerms: (attributeId: string, params: string = '') => {
-    const cb = getDailyCacheBuster();
-    const allParams = params ? `${params}&cb=${cb}` : `cb=${cb}`;
-    if (isDevelopment) {
-      return {
-        url: `/wp-json/wc/v3/products/attributes/${attributeId}/terms?${allParams}`,
-        options: { headers: getAuthHeaders() }
-      };
-    }
-    return {
-      url: `${WC_API_URL}/products/attributes/${attributeId}/terms?${allParams}`,
-      options: { headers: getAuthHeaders() }
-    };
-  },
+  attributes: (params: string = '') => wcUrl('products/attributes', params),
 
-  // Filter aggregation endpoint (custom Leah API)
+  attributeTerms: (attributeId: string, params: string = '') =>
+    wcUrl(`products/attributes/${attributeId}/terms`, params),
+
   filterAggregation: (categoryId: string | number) => {
     const cb = getDailyCacheBuster();
     const baseUrl = isDevelopment
@@ -134,20 +62,9 @@ export const apiEndpoints = {
       : 'https://leahcation.ru/wp/wp-json/leah/v1/filters';
     return {
       url: `${baseUrl}?category=${categoryId}&cb=${cb}`,
-      options: { headers: { 'Accept': 'application/json' } }
+      options: { headers: { 'Accept': 'application/json' } },
     };
-  }
+  },
 };
 
-// Media proxy function - DISABLED (no longer needed)
-// Images load directly without CORS issues
-export const getProxiedMediaUrl = (originalUrl: string): string => {
-  // Return original URL directly - no proxying needed
-  return originalUrl;
-};
-
-
-
-
-
-
+export const getProxiedMediaUrl = (originalUrl: string): string => originalUrl;

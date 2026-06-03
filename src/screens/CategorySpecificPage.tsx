@@ -10,11 +10,11 @@ import { DiscountPrice } from '../components/DiscountPrice';
 import { DynamicText } from '../components/DynamicText';
 import { useTranslation } from '../context/TranslationContext';
 import { apiEndpoints } from '../utils/apiConfig';
-import { getColorHex, sortSizes, slugifyColor } from '../utils/colorMap';
-import { isProductHidden } from '../utils/hiddenProducts';
 import { getActualPrice } from '../utils/priceHelpers';
 import { savePageNumber, getPageNumber, clearPageNumber } from '../components/ScrollToTop';
 import ProductImageCarousel from '../components/ProductImageCarousel';
+import { getColorHex, sortSizes, slugifyColor } from '../utils/colorMap';
+import { isProductHidden } from '../utils/hiddenProducts';
 
 // Cache constants and helper functions
 const CACHE_DURATION_MS = 24 * 60 * 60 * 1000; // 1 day
@@ -353,9 +353,6 @@ export const CategorySpecificPage = (): JSX.Element => {
       // Process products with variations efficiently
       const processedProducts = await Promise.all(
         baseProducts.map(async (product) => {
-          // Skip hidden products
-          if (isProductHidden(product.id)) return null;
-
           const productImages = Array.isArray(product.images) ? product.images : [];
 
           // DEBUG: Log raw product data from API
@@ -432,32 +429,62 @@ export const CategorySpecificPage = (): JSX.Element => {
                           }
                         });
 
-                        let potentialVideoSrc: string | undefined = undefined;
-                        if (bestVariation.description) {
-                          const videoMatch = bestVariation.description.match(/(https?:\/\/[^\s]+\.(?:mp4|webm))/i);
-                          if (videoMatch?.[0]) potentialVideoSrc = videoMatch[0];
+                        // Strip query params (?_=N) to avoid WP shortcode URL duplication
+                        const videoUrls: string[] = [];
+                        const seenVideoUrls = new Set<string>();
+                        if (bestVariation.description && typeof bestVariation.description === 'string') {
+                          const urlMatches = [...bestVariation.description.matchAll(/(https?:\/\/[^\s,"'<>]+\.(?:mp4|webm)(?:[^\s,"'<>]*)?)/gi)];
+                          urlMatches.forEach(m => {
+                            const clean = m[1].split('?')[0];
+                            if (clean && !seenVideoUrls.has(clean)) { seenVideoUrls.add(clean); videoUrls.push(clean); }
+                          });
+                          if (videoUrls.length === 0) {
+                            const tagMatches = [...bestVariation.description.matchAll(/<(?:source|video)[^>]+src=["'](.*?)["']/gi)];
+                            tagMatches.forEach(m => {
+                              const clean = m[1].split('?')[0];
+                              if (clean && !seenVideoUrls.has(clean)) { seenVideoUrls.add(clean); videoUrls.push(clean); }
+                            });
+                          }
                         }
 
-                        const finalImageSrc = potentialVideoSrc ||
+                        const finalImageSrc =
                           bestVariation.image?.src ||
                           productImages[0]?.src ||
                           '/placeholder.png';
 
-                        // Build enriched gallery: variation main image + variation_gallery URLs
-                        const gallerySet = new Set<string>();
-                        // 1. Add the best variation's main image
-                        if (bestVariation.image?.src) gallerySet.add(bestVariation.image.src);
-                        // 2. Add variation-specific gallery images (variation_gallery.urls)
+                        // Build interleaved gallery: images from variation_gallery, videos from description
+                        // Pattern: image, video, image, video, image...
+                        const imageItems: Array<{ src: string; type: 'image' }> = [];
+                        const seenImgSrcs = new Set<string>();
+                        if (bestVariation.image?.src) {
+                          imageItems.push({ src: bestVariation.image.src, type: 'image' });
+                          seenImgSrcs.add(bestVariation.image.src);
+                        }
                         const varGallery = bestVariation.variation_gallery;
                         if (varGallery && varGallery.urls && varGallery.urls.length > 0) {
-                          varGallery.urls.forEach((url: string) => { if (url) gallerySet.add(url); });
+                          varGallery.urls.forEach((url: string) => {
+                            if (url && !seenImgSrcs.has(url)) {
+                              imageItems.push({ src: url, type: 'image' });
+                              seenImgSrcs.add(url);
+                            }
+                          });
                         }
-                        // 3. Fallback: parent images + other variation images
-                        if (gallerySet.size < 2) {
-                          productImages.forEach(img => { if (img.src) gallerySet.add(img.src); });
-                          colorVariations.forEach(v => { if (v.image?.src) gallerySet.add(v.image.src); });
+                        if (imageItems.length < 2) {
+                          productImages.forEach(img => {
+                            if (img.src && !seenImgSrcs.has(img.src)) {
+                              imageItems.push({ src: img.src, type: 'image' });
+                              seenImgSrcs.add(img.src);
+                            }
+                          });
                         }
-                        const enrichedGallery = Array.from(gallerySet).map(src => ({ src }));
+                        // Interleave: image, video, image, video...
+                        const enrichedGallery: Array<{ src: string; type: 'image' | 'video' }> = [];
+                        const maxLen = Math.max(imageItems.length, videoUrls.length * 2);
+                        let imgIdx = 0; let vidIdx = 0;
+                        for (let i = 0; i < maxLen && (imgIdx < imageItems.length || vidIdx < videoUrls.length); i++) {
+                          if (imgIdx < imageItems.length) enrichedGallery.push(imageItems[imgIdx++]);
+                          if (vidIdx < videoUrls.length) enrichedGallery.push({ src: videoUrls[vidIdx++], type: 'video' });
+                        }
 
                         return {
                           parentId: product.id,
@@ -469,7 +496,7 @@ export const CategorySpecificPage = (): JSX.Element => {
                           sale_price: product.sale_price,
                           price_html: product.price_html,
                           imageSrc: finalImageSrc,
-                          isVideo: !!potentialVideoSrc,
+                          isVideo: videoUrls.length > 0,
                           attributes: product.attributes,
                           variationAttributes: bestVariation.attributes,
                           slug: product.slug,
@@ -562,7 +589,8 @@ export const CategorySpecificPage = (): JSX.Element => {
       const flattenedProducts: DisplayableProduct[] = processedProducts
         .flat()
         .filter(Boolean)
-        .filter(product => product.status === 'publish');
+        .filter(product => product.status === 'publish')
+        .filter(product => !isProductHidden(product.parentId)); // EN-only: exclude hidden products
 
       console.log(`✅ Processed ${flattenedProducts.length} displayable products for page ${page}`);
 
@@ -687,11 +715,9 @@ export const CategorySpecificPage = (): JSX.Element => {
   const { likedProducts, likedProductsCache, toggleLike } = useLikes();
   const { addToCart } = useCart();
 
-  const WC_CONSUMER_KEY = 'ck_084aa13e23a1accc48bc43802ffe9757f01005b4';
-  const WC_CONSUMER_SECRET = 'cs_5001dac555fade564eeb29c4d95fb49ea973d6f5';
-  const WC_API_URL = 'https://leahcation.ru/wp/wp-json/wc/v3';
 
-  // Color mapping - using shared utility from colorMap.ts
+
+  // Color mapping - using shared utility from colorMap.ts (imported at top of file)
 
   // Effect to initialize size, color, sort, and sub-category filters from URL search params
   useEffect(() => {
@@ -834,7 +860,6 @@ export const CategorySpecificPage = (): JSX.Element => {
     setColorNameToSlug({});
     setSizeNameToSlug({});
     setLoading(true);
-    setHasInitialLoadCompleted(false);
 
     // Only reset filters and page when ACTUALLY changing categories (not first load, not returning from product page)
     if (isCategoryActuallyChanging) {
@@ -908,7 +933,7 @@ export const CategorySpecificPage = (): JSX.Element => {
 
     // Update previous category slug ref
     previousCategorySlugRef.current = categorySlug;
-  }, [categorySlug, WC_API_URL, WC_CONSUMER_KEY, WC_CONSUMER_SECRET]); // Added API constants to deps, though they are unlikely to change
+  }, [categorySlug]); // API constants removed — auth handled by proxy
 
   // Simple loading state management
   useEffect(() => {
@@ -1274,7 +1299,7 @@ export const CategorySpecificPage = (): JSX.Element => {
                     <button
                       key={opt}
                       type="button"
-                      title=""
+                      title={opt}
                       className={`w-6 h-6 rounded-full border border-gray-300 focus:outline-none focus:ring-1 focus:ring-offset-1 focus:ring-black hover:border-black transition-all
                         ${selected === opt ? 'ring-2 ring-black ring-offset-1 border-black' : ''}
                       `}
@@ -1368,7 +1393,7 @@ export const CategorySpecificPage = (): JSX.Element => {
             {loadingAllProducts ? (
               <div className="flex items-center space-x-2">
                 <div className="w-4 h-4 border-2 border-gray-300 border-t-black rounded-full animate-spin"></div>
-                <span className="text-sm font-bold uppercase tracking-wider">Filters</span>
+                <span className="text-sm font-bold uppercase tracking-wider">Фильтры</span>
               </div>
             ) : (
               <>
@@ -1451,7 +1476,7 @@ export const CategorySpecificPage = (): JSX.Element => {
             {loadingAllProducts ? (
               <div className="flex items-center space-x-2 pl-6">
                 <div className="w-4 h-4 border-2 border-gray-300 border-t-black rounded-full animate-spin"></div>
-                <span className="text-xs font-bold uppercase tracking-wider">Filters</span>
+                <span className="text-xs font-bold uppercase tracking-wider">Фильтры</span>
               </div>
             ) : (
               <>
@@ -1467,9 +1492,9 @@ export const CategorySpecificPage = (): JSX.Element => {
                   {t('common.filters')} <FilterIcon className="ml-2 w-4 h-4" />
                 </button>
                 <div className="flex items-center pr-6">
-                  <FilterDropdown label="Sort" options={['Price: Low to High', 'Price: High to Low']}
-                    selected={sortOrder === 'price_asc' ? 'Price: Low to High' : sortOrder === 'price_desc' ? 'Price: High to Low' : ''}
-                    onSelect={(val) => setSortOrder(val === 'Price: Low to High' ? 'price_asc' : val === 'Price: High to Low' ? 'price_desc' : '')}
+                  <FilterDropdown label="Сортировать" options={['Цена: по возрастанию', 'Цена: по убыванию']}
+                    selected={sortOrder === 'price_asc' ? 'Цена: по возрастанию' : sortOrder === 'price_desc' ? 'Цена: по убыванию' : ''}
+                    onSelect={(val) => setSortOrder(val === 'Цена: по возрастанию' ? 'price_asc' : val === 'Цена: по убыванию' ? 'price_desc' : '')}
                     id="sort-mobile-csp"
                   />
                 </div>
@@ -1483,7 +1508,7 @@ export const CategorySpecificPage = (): JSX.Element => {
           <div className={`fixed inset-y-0 left-0 w-[80vw] max-w-[400px] bg-white transform transition-transform duration-300 ease-in-out z-50 ${isFilterDrawerOpen ? 'translate-x-0' : '-translate-x-full'} ${isFilterDrawerOpen ? '' : 'pointer-events-none'}`}>
             <div className="flex justify-end p-2"><button onClick={() => setIsFilterDrawerOpen(false)}><X size={20} /></button></div>
             <div className="px-4 pb-4 flex flex-col h-full">
-              <span className="text-base font-bold uppercase mb-2">Filters for <DynamicText text={currentCategory?.name || ''} /></span>
+              <span className="text-base font-bold uppercase mb-2">Фильтры для {currentCategory?.name}</span>
               <div className="w-full h-px bg-gray-200 mb-2" />
               <SelectedFiltersDisplay
                 selectedSize={selectedSize}
@@ -1501,7 +1526,7 @@ export const CategorySpecificPage = (): JSX.Element => {
               <div className="flex flex-col gap-1 flex-1 overflow-y-auto">
                 {/* Size */}
                 <div>
-                  <button className="w-full flex justify-between items-center py-2 font-bold uppercase text-xs border-b" onClick={() => setMobileFilterDropdown(m => m === 'size' ? null : 'size')}>Size{selectedSize && ` (${selectedSize})`}<ChevronDown className={`transition-transform ${mobileFilterDropdown === 'size' ? 'rotate-180' : ''}`} /></button>
+                  <button className="w-full flex justify-between items-center py-2 font-bold uppercase text-xs border-b" onClick={() => setMobileFilterDropdown(m => m === 'size' ? null : 'size')}>Размер{selectedSize && ` (${selectedSize})`}<ChevronDown className={`transition-transform ${mobileFilterDropdown === 'size' ? 'rotate-180' : ''}`} /></button>
                   {mobileFilterDropdown === 'size' && (
                     <div className="flex flex-wrap gap-1 mt-1 px-1 pb-1">
                       {allSizes.length > 0 ? (
@@ -1515,14 +1540,14 @@ export const CategorySpecificPage = (): JSX.Element => {
                           </button>
                         ))
                       ) : (
-                        <p className="text-xs text-gray-500 px-1">No sizes available</p>
+                        <p className="text-xs text-gray-500 px-1">Нет доступных размеров</p>
                       )}
                     </div>
                   )}
                 </div>
                 {/* Color */}
                 <div>
-                  <button className="w-full flex justify-between items-center py-2 font-bold uppercase text-xs border-b" onClick={() => setMobileFilterDropdown(m => m === 'color' ? null : 'color')}>Color<ChevronDown className={`transition-transform ${mobileFilterDropdown === 'color' ? 'rotate-180' : ''}`} /></button>
+                  <button className="w-full flex justify-between items-center py-2 font-bold uppercase text-xs border-b" onClick={() => setMobileFilterDropdown(m => m === 'color' ? null : 'color')}>Цвет{selectedColor && ` (${selectedColor})`}<ChevronDown className={`transition-transform ${mobileFilterDropdown === 'color' ? 'rotate-180' : ''}`} /></button>
                   {mobileFilterDropdown === 'color' && (
                     <div className="flex flex-wrap gap-2 mt-1 px-1 pb-1">
                       {allColorsForCategory.length > 0 ? (
@@ -1541,7 +1566,7 @@ export const CategorySpecificPage = (): JSX.Element => {
                           />
                         ))
                       ) : (
-                        <p className="text-xs text-gray-500 px-1">No colors available</p>
+                        <p className="text-xs text-gray-500 px-1">Нет доступных цветов</p>
                       )}
                     </div>
                   )}
@@ -1550,7 +1575,7 @@ export const CategorySpecificPage = (): JSX.Element => {
                 <div>
                   <button className="w-full flex justify-between items-center py-2 font-bold uppercase text-xs border-b"
                     onClick={() => setMobileFilterDropdown(m => m === 'style' ? null : 'style')}>
-                    Category {selectedSubCategoryId && subCategoriesForFilter.flatMap(sc => sc.children ? [sc, ...sc.children] : [sc]).find(sc => String(sc.id) === selectedSubCategoryId)?.name ? ` (${subCategoriesForFilter.flatMap(sc => sc.children ? [sc, ...sc.children] : [sc]).find(sc => String(sc.id) === selectedSubCategoryId)?.name})` : ''}
+                    Категория {selectedSubCategoryId && subCategoriesForFilter.flatMap(sc => sc.children ? [sc, ...sc.children] : [sc]).find(sc => String(sc.id) === selectedSubCategoryId)?.name ? ` (${subCategoriesForFilter.flatMap(sc => sc.children ? [sc, ...sc.children] : [sc]).find(sc => String(sc.id) === selectedSubCategoryId)?.name})` : ''}
                     <ChevronDown className={`transition-transform ${mobileFilterDropdown === 'style' ? 'rotate-180' : ''}`} />
                   </button>
                   {mobileFilterDropdown === 'style' && (
@@ -1560,7 +1585,7 @@ export const CategorySpecificPage = (): JSX.Element => {
                         onClick={() => {
                           setSelectedSubCategoryId('');
                         }}>
-                        {t('common.allSubcategories')} (<DynamicText text={currentCategory?.name || ''} />)
+                        {t('common.allSubcategories')} ({currentCategory?.name})
                       </button>
                       {renderMobileCategoryItems(subCategoriesForFilter)}
                     </div>
@@ -1575,12 +1600,12 @@ export const CategorySpecificPage = (): JSX.Element => {
           {/* Product grid */}
           <div className="w-full">
             {/* Show skeleton until first product load completes */}
-            {(!hasInitialLoadCompleted || loading) ? (
+            {!hasInitialLoadCompleted ? (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-0">
                 {[...Array(6)].map((_, idx) => <div key={idx} className={`${(idx + 1) % 3 === 0 ? '' : 'border-r'} ${idx >= 3 ? '' : 'border-b'} border-gray-100`}><ProductCardSkeleton delay={`${idx * 120}ms`} /></div>)}
               </div>
             ) : displayableProducts.length === 0 ? (
-              <p className="text-center py-10">No products found in <DynamicText text={currentCategory?.name || 'this category'} /> matching your filters.</p>
+              <p className="text-center py-10">No products found in {currentCategory?.name || 'this category'} matching your filters.</p>
             ) : (
               <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-3 gap-0">
                 {displayableProducts.map((product, idx) => {
@@ -1599,6 +1624,7 @@ export const CategorySpecificPage = (): JSX.Element => {
                         <ProductImageCarousel
                           product={product}
                           productLink={productLink}
+                          allowVideo={idx % 2 === 1}
                         />
                         <div className="mt-2 pl-2 pr-2 pb-2 md:pl-3 md:pr-3 md:pb-3">
                           <Link to={productLink} state={{ parentProductId: product.parentId, selectedColor: product.selectedColorOption, productData: product }} className="block">
@@ -1645,7 +1671,7 @@ export const CategorySpecificPage = (): JSX.Element => {
                                   <span
                                     key={size}
                                     className="px-2 py-0.5 text-[10px] border rounded-full border-gray-200 bg-white text-gray-300 line-through cursor-not-allowed"
-                                    title={`${size} — out of stock`}
+                                    title={`${size} — нет в наличии`}
                                   >
                                     {size}
                                   </span>
