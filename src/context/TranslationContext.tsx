@@ -173,6 +173,16 @@ class TranslationService {
     'Бра майка Мирра / Сицилия': 'Tank top bra Myrrh / Sicily',
     'Бра майка Пальмы / Оранжина': 'Tank top bra Palms / Orangina',
     'Бра майка Лотос / Фрагола': 'Tank top bra Lotus / Fragola',
+    // Bra "Дельфи" (Delphi) — fixes Google mistranslation "Бра" → "Sconce"/"Wall lamp"
+    'Бра Дельфи': 'Bra Delphi',
+    'Бра Дельфи Бархат': 'Bra Delphi Velvet',
+    'Бра Дельфи Плюс Сайз': 'Bra Delphi Plus Size',
+    // Other bras missing from the dictionary (were also hitting the "Sconce"/"Wall lamp" mistranslation)
+    'Бра Zemfira': 'Bra Zemfira',
+    'Бра бандо Плюс Сайз': 'Bandeau bra Plus Size',
+    'Бра мини бикини': 'Mini bikini bra',
+    'Бра мини бикини Бархат': 'Mini bikini bra Velvet',
+    'Бра с чашками': 'Padded bra',
 
     // ──────────────────────────────────────────────
     // BOTTOMS (Плавки)
